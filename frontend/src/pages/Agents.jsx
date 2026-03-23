@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
-import { X, Send, Trash2, Plus } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { X, Send, Trash2, Plus, FileText, Clock, Zap, Bot, Wifi } from 'lucide-react'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { getAgents, deleteAgent, createAgent, sendChat } from '../lib/api'
+
+const API = import.meta.env.VITE_API_URL || ''
 
 export function Agents() {
   const [agents, setAgents] = useState([])
@@ -11,6 +13,10 @@ export function Agents() {
   const [messageInput, setMessageInput] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [agentStats, setAgentStats] = useState({})
+  const [settings, setSettings] = useState({})
+  const messagesEndRef = useRef(null)
+
   const [formData, setFormData] = useState({
     name: '',
     role: '',
@@ -22,13 +28,20 @@ export function Agents() {
 
   useEffect(() => {
     loadAgents()
+    loadSettings()
   }, [])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const loadAgents = async () => {
     setIsLoading(true)
     try {
       const data = await getAgents().catch(() => [])
-      setAgents(Array.isArray(data) ? data : (data.agents || []))
+      const agentList = Array.isArray(data) ? data : (data.agents || [])
+      setAgents(agentList)
+      await loadAgentStats(agentList)
     } catch (err) {
       console.error('Failed to load agents:', err)
     } finally {
@@ -36,17 +49,90 @@ export function Agents() {
     }
   }
 
-  const handleSelectAgent = (agent) => {
-    setSelectedAgent(agent)
-    setMessages([
-      {
-        id: 1,
-        role: 'assistant',
-        content: `Hi, I'm ${agent.name}. How can I help you?`,
-        timestamp: new Date()
+  const loadSettings = async () => {
+    try {
+      const res = await fetch(`${API}/api/settings`)
+      if (res.ok) setSettings(await res.json())
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const loadAgentStats = async (agentList) => {
+    try {
+      const docsRes = await fetch(`${API}/api/documents`)
+      const docs = docsRes.ok ? await docsRes.json() : []
+
+      const costsRes = await fetch(`${API}/api/costs/recent?limit=100`)
+      const costs = costsRes.ok ? await costsRes.json() : []
+
+      const stats = {}
+      for (const agent of agentList) {
+        const agentDocs = Array.isArray(docs) ? docs.filter(d => d.agent_id === agent.id) : []
+        const agentCosts = Array.isArray(costs)
+          ? costs.filter(c => c.agent_id === agent.id || c.agent_name === agent.name)
+          : []
+
+        let chatCount = 0
+        try {
+          const chatRes = await fetch(`${API}/api/chat/${agent.id}/history`)
+          const chat = chatRes.ok ? await chatRes.json() : []
+          chatCount = Array.isArray(chat) ? chat.filter(m => m.role === 'assistant').length : 0
+        } catch (e) {
+          // ignore
+        }
+
+        const lastActivity = agentCosts.length > 0
+          ? (agentCosts[0]?.timestamp || agentCosts[0]?.logged_at || null)
+          : null
+
+        stats[agent.id] = {
+          documents: agentDocs.length,
+          responses: chatCount,
+          apiCalls: agentCosts.length,
+          lastActive: lastActivity,
+        }
       }
-    ])
+      setAgentStats(stats)
+    } catch (e) {
+      console.error('Failed to load agent stats:', e)
+    }
+  }
+
+  const handleSelectAgent = async (agent) => {
+    setSelectedAgent(agent)
     setMessageInput('')
+    try {
+      const res = await fetch(`${API}/api/chat/${agent.id}/history`)
+      const history = res.ok ? await res.json() : []
+      if (Array.isArray(history) && history.length > 0) {
+        setMessages(history.map((m, i) => ({
+          id: m.id || i,
+          role: m.role,
+          content: m.content,
+          route: m.route,
+          timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+        })))
+      } else {
+        setMessages([
+          {
+            id: 1,
+            role: 'assistant',
+            content: `Hi, I'm ${agent.name}. How can I help you?`,
+            timestamp: new Date(),
+          },
+        ])
+      }
+    } catch (e) {
+      setMessages([
+        {
+          id: 1,
+          role: 'assistant',
+          content: `Hi, I'm ${agent.name}. How can I help you?`,
+          timestamp: new Date(),
+        },
+      ])
+    }
   }
 
   const handleSendMessage = async () => {
@@ -56,7 +142,7 @@ export function Agents() {
       id: messages.length + 1,
       role: 'user',
       content: messageInput,
-      timestamp: new Date()
+      timestamp: new Date(),
     }
 
     setMessages(prev => [...prev, userMessage])
@@ -66,24 +152,27 @@ export function Agents() {
 
     try {
       const result = await sendChat(selectedAgent.id, prompt)
+      const route = result.route || 'unknown'
       setMessages(prev => [
         ...prev,
         {
           id: prev.length + 1,
           role: 'assistant',
           content: result.response || 'No response received.',
-          timestamp: new Date()
-        }
+          route,
+          timestamp: new Date(),
+        },
       ])
+      loadAgentStats(agents)
     } catch (err) {
       setMessages(prev => [
         ...prev,
         {
           id: prev.length + 1,
           role: 'assistant',
-          content: `Error: ${err.message}. Check your API keys in .env.`,
-          timestamp: new Date()
-        }
+          content: `Error: ${err.message}`,
+          timestamp: new Date(),
+        },
       ])
     } finally {
       setIsSending(false)
@@ -124,12 +213,37 @@ export function Agents() {
     }
   }
 
+  const formatTimeAgo = (timestamp) => {
+    if (!timestamp) return 'No activity yet'
+    const now = new Date()
+    const then = new Date(timestamp)
+    const diff = Math.floor((now - then) / 1000)
+    if (diff < 60) return 'Just now'
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+    return `${Math.floor(diff / 86400)}d ago`
+  }
+
+  const isOpenClawActive = settings.openclaw_llm_active || false
+
   return (
     <div className="flex h-full gap-6">
-      {/* Main content */}
-      <div className="flex-1">
+      <div className={`flex-1 ${selectedAgent ? '' : ''}`}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-section-label">Manage Agents</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-section-label">Manage Agents</h2>
+            {isOpenClawActive ? (
+              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] text-emerald-400">
+                <Wifi size={10} />
+                Routing via OpenClaw
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-[10px] text-amber-400">
+                <Zap size={10} />
+                Using API Keys
+              </span>
+            )}
+          </div>
           <button
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
@@ -142,7 +256,7 @@ export function Agents() {
         {isLoading ? (
           <div className="grid grid-cols-2 gap-4">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-40 bg-lab-surface rounded animate-pulse" />
+              <div key={i} className="h-48 bg-lab-surface rounded animate-pulse" />
             ))}
           </div>
         ) : agents.length === 0 ? (
@@ -157,62 +271,98 @@ export function Agents() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            {agents.map(agent => (
-              <button
-                key={agent.id}
-                onClick={() => handleSelectAgent(agent)}
-                className={`card transition-subtle cursor-pointer border-lab-border hover:border-lab-border-hover ${
-                  selectedAgent?.id === agent.id ? 'border-lab-accent' : ''
-                }`}
-              >
-                <div className="flex items-start gap-3 mb-3">
-                  <AvatarCircle name={agent.name} agent={agent.agent_type} size={32} />
-                  <div className="flex-1 text-left">
-                    <div className="text-sm font-medium text-lab-text-primary">
-                      {agent.name}
+            {agents.map(agent => {
+              const stats = agentStats[agent.id] || {}
+              return (
+                <button
+                  key={agent.id}
+                  onClick={() => handleSelectAgent(agent)}
+                  className={`card transition-subtle cursor-pointer border-lab-border hover:border-lab-border-hover group ${
+                    selectedAgent?.id === agent.id ? 'border-lab-accent' : ''
+                  }`}
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <AvatarCircle name={agent.name} agent={agent.agent_type} size={36} />
+                    <div className="flex-1 text-left">
+                      <div className="text-sm font-medium text-lab-text-primary">{agent.name}</div>
+                      <div className="text-xs text-lab-text-muted">{agent.role}</div>
                     </div>
-                    <div className="text-xs text-lab-text-muted">{agent.role}</div>
+                    <div className="flex items-center gap-2">
+                      {agent.status === 'working' ? (
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 rounded text-[10px] text-blue-400">
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+                          Working
+                        </span>
+                      ) : agent.status === 'error' ? (
+                        <span className="px-2 py-0.5 bg-red-500/10 rounded text-[10px] text-red-400">Error</span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-lab-elevated rounded text-[10px] text-lab-text-muted">Idle</span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteAgent(agent.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-lab-error hover:bg-lab-error/10 rounded transition-subtle"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteAgent(agent.id)
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-lab-error hover:bg-lab-error/10 rounded transition-subtle"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
 
-                <p className="text-xs text-lab-text-secondary mb-3 line-clamp-2">
-                  {agent.goal || 'No description'}
-                </p>
+                  <p className="text-xs text-lab-text-secondary mb-4 line-clamp-2 text-left">
+                    {agent.goal || 'No description'}
+                  </p>
 
-                <div className="flex items-center gap-2">
-                  <span className="inline-block px-2 py-0.5 bg-lab-elevated text-xs text-lab-text-muted rounded">
-                    {agent.provider}
-                  </span>
-                  <div className="flex-1" />
-                  <div className="text-xs text-lab-text-muted">
-                    {agent.status || 'idle'}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
+                      <div className="text-sm font-semibold text-lab-text-primary">{stats.documents || 0}</div>
+                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1">
+                        <FileText size={9} />
+                        Docs
+                      </div>
+                    </div>
+                    <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
+                      <div className="text-sm font-semibold text-lab-text-primary">{stats.responses || 0}</div>
+                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1">
+                        <Bot size={9} />
+                        Chats
+                      </div>
+                    </div>
+                    <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
+                      <div className="text-sm font-semibold text-lab-text-primary">{stats.apiCalls || 0}</div>
+                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1">
+                        <Zap size={9} />
+                        Calls
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-lab-border/50">
+                    <span className="inline-block px-2 py-0.5 bg-lab-elevated text-[10px] text-lab-text-muted rounded">
+                      {isOpenClawActive ? 'openclaw' : agent.provider}
+                    </span>
+                    <div className="flex items-center gap-1 text-[10px] text-lab-text-muted">
+                      <Clock size={9} />
+                      {formatTimeAgo(stats.lastActive)}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
       </div>
 
-      {/* Chat panel */}
       {selectedAgent && (
-        <div className="w-[400px] flex flex-col border-l border-lab-border bg-lab-surface">
-          {/* Header */}
+        <div className="w-[420px] flex flex-col border-l border-lab-border bg-lab-surface">
           <div className="flex items-center justify-between p-4 border-b border-lab-border">
-            <div>
-              <div className="text-sm font-medium text-lab-text-primary">
-                {selectedAgent.name}
+            <div className="flex items-center gap-3">
+              <AvatarCircle name={selectedAgent.name} agent={selectedAgent.agent_type} size={28} />
+              <div>
+                <div className="text-sm font-medium text-lab-text-primary">{selectedAgent.name}</div>
+                <div className="text-[10px] text-lab-text-muted">{selectedAgent.role}</div>
               </div>
-              <div className="text-xs text-lab-text-muted">{selectedAgent.role}</div>
             </div>
             <button
               onClick={() => {
@@ -225,36 +375,49 @@ export function Agents() {
             </button>
           </div>
 
-          {/* Messages */}
+          {isOpenClawActive && (
+            <div className="px-4 py-2 bg-emerald-500/5 border-b border-emerald-500/10 flex items-center gap-2">
+              <Wifi size={11} className="text-emerald-400" />
+              <span className="text-[10px] text-emerald-400">
+                Responses routed via OpenClaw — using your subscription (no API cost)
+              </span>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.map(msg => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-xs px-3 py-2 rounded-md text-xs whitespace-pre-wrap ${
+                  className={`max-w-[85%] px-3 py-2 rounded-lg text-xs leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-lab-accent/10 text-lab-text-primary'
-                      : 'bg-lab-elevated text-lab-text-secondary'
+                      ? 'bg-lab-accent/10 text-lab-text-primary rounded-br-sm'
+                      : 'bg-lab-elevated text-lab-text-secondary rounded-bl-sm'
                   }`}
                 >
-                  {msg.content}
+                  <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                  {msg.route && (
+                    <div className="mt-1 pt-1 border-t border-white/5 text-[9px] text-lab-text-muted">
+                      {msg.route}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
             {isSending && (
               <div className="flex justify-start">
-                <div className="bg-lab-elevated px-3 py-2 rounded-md flex gap-1">
-                  <div className="w-1.5 h-1.5 bg-lab-text-muted rounded-full animate-dot-blink animate-dot-blink-1" />
-                  <div className="w-1.5 h-1.5 bg-lab-text-muted rounded-full animate-dot-blink animate-dot-blink-2" />
-                  <div className="w-1.5 h-1.5 bg-lab-text-muted rounded-full animate-dot-blink animate-dot-blink-3" />
+                <div className="bg-lab-elevated px-4 py-3 rounded-lg flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 bg-lab-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-1.5 h-1.5 bg-lab-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-1.5 h-1.5 bg-lab-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span className="text-[10px] text-lab-text-muted">{selectedAgent.name} is thinking...</span>
                 </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <div className="border-t border-lab-border p-4">
             <div className="flex items-center gap-2">
               <input
@@ -268,12 +431,12 @@ export function Agents() {
                   }
                 }}
                 placeholder={`Message ${selectedAgent.name}...`}
-                className="flex-1 bg-lab-bg border border-lab-border rounded-md px-3 py-1.5 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50 transition-subtle"
+                className="flex-1 bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50 transition-subtle"
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!messageInput.trim()}
-                className="p-1.5 bg-lab-accent/10 hover:bg-lab-accent/20 disabled:opacity-50 rounded-md transition-subtle text-lab-accent"
+                disabled={!messageInput.trim() || isSending}
+                className="p-2 bg-lab-accent/10 hover:bg-lab-accent/20 disabled:opacity-30 rounded-md transition-subtle text-lab-accent"
               >
                 <Send size={14} />
               </button>
@@ -282,54 +445,38 @@ export function Agents() {
         </div>
       )}
 
-      {/* Add Agent Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="card-elevated w-96">
-            <h2 className="text-sm font-semibold text-lab-text-primary mb-4">
-              Create New Agent
-            </h2>
-
+            <h2 className="text-sm font-semibold text-lab-text-primary mb-4">Create New Agent</h2>
             <form onSubmit={handleAddAgent} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                  Name
-                </label>
+                <label className="block text-xs font-medium text-lab-text-secondary mb-2">Name</label>
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50"
                   placeholder="Agent name"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                  Role
-                </label>
+                <label className="block text-xs font-medium text-lab-text-secondary mb-2">Role</label>
                 <input
                   type="text"
                   value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50"
                   placeholder="e.g. Research Agent"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                  Goal
-                </label>
+                <label className="block text-xs font-medium text-lab-text-secondary mb-2">Goal</label>
                 <textarea
                   value={formData.goal}
-                  onChange={(e) =>
-                    setFormData({ ...formData, goal: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, goal: e.target.value })}
                   className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50 resize-none"
                   placeholder="What should this agent accomplish?"
                   rows={2}
@@ -338,9 +485,7 @@ export function Agents() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                    Provider
-                  </label>
+                  <label className="block text-xs font-medium text-lab-text-secondary mb-2">Provider</label>
                   <select
                     value={formData.provider}
                     onChange={(e) => {
@@ -357,14 +502,10 @@ export function Agents() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                    Model
-                  </label>
+                  <label className="block text-xs font-medium text-lab-text-secondary mb-2">Model</label>
                   <select
                     value={formData.model_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, model_name: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
                     className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary focus:outline-none focus:border-lab-accent/50"
                   >
                     {formData.provider === 'openai' && (
