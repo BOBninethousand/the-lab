@@ -2,11 +2,13 @@
 OpenClaw Gateway Bridge
 Connects The Lab to OpenClaw's WebSocket Gateway (ws://localhost:18789)
 so tasks, sessions, and status are visible in The Lab dashboard.
+
+Implements Gateway Protocol v3 + device identity signing for connect handshake.
 """
 import asyncio
+import hashlib
 import json
 import os
-import time
 import uuid
 import logging
 from datetime import datetime
@@ -14,19 +16,104 @@ from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger("openclaw_bridge")
 
-# Default gateway location
 DEFAULT_GATEWAY_URL = "ws://127.0.0.1:18789"
+
+_DEVICE_KEY_DIR = os.path.join(os.path.expanduser("~"), ".the-lab")
+_DEVICE_KEY_PATH = os.path.join(_DEVICE_KEY_DIR, "device_key.json")
+
+
+def _ensure_device_keypair() -> dict:
+    """Load or generate the Ed25519 device keypair for The Lab."""
+    if os.path.isfile(_DEVICE_KEY_PATH):
+        try:
+            with open(_DEVICE_KEY_PATH) as f:
+                data = json.load(f)
+            if "private_key_hex" in data and "public_key_hex" in data and "device_id" in data:
+                return data
+        except Exception:
+            pass
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+
+    private_key = Ed25519PrivateKey.generate()
+    private_bytes = private_key.private_bytes(
+        serialization.Encoding.Raw,
+        serialization.PrivateFormat.Raw,
+        serialization.NoEncryption(),
+    )
+    public_bytes = private_key.public_key().public_bytes(
+        serialization.Encoding.Raw,
+        serialization.PublicFormat.Raw,
+    )
+
+    device_id = hashlib.sha256(public_bytes).hexdigest()
+    data = {
+        "device_id": device_id,
+        "private_key_hex": private_bytes.hex(),
+        "public_key_hex": public_bytes.hex(),
+    }
+
+    os.makedirs(_DEVICE_KEY_DIR, exist_ok=True)
+    with open(_DEVICE_KEY_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+    os.chmod(_DEVICE_KEY_PATH, 0o600)
+    logger.info("Generated new device keypair — device_id: %s...", device_id[:16])
+    return data
+
+
+def _b64url(raw: bytes) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _sign_payload(private_key_hex: str, payload: str) -> str:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    private_key = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(private_key_hex))
+    sig = private_key.sign(payload.encode("utf-8"))
+    return _b64url(sig)
+
+
+def _build_v3_signature_payload(
+    *,
+    device_id: str,
+    client_id: str,
+    client_mode: str,
+    role: str,
+    scopes: List[str],
+    signed_at_ms: int,
+    token: Optional[str],
+    nonce: str,
+    platform: str,
+    device_family: str,
+) -> str:
+    scopes_csv = ",".join(scopes)
+    token_val = token or ""
+    return "|".join([
+        "v3",
+        device_id,
+        client_id,
+        client_mode,
+        role,
+        scopes_csv,
+        str(signed_at_ms),
+        token_val,
+        nonce,
+        str(platform or "").strip().lower(),
+        str(device_family or "").strip().lower(),
+    ])
 
 
 class OpenClawBridge:
     """Manages the WebSocket connection to OpenClaw Gateway."""
 
     def __init__(self, ws_manager=None, cost_tracker=None):
-        self.gateway_url: str = os.getenv(
-            "OPENCLAW_GATEWAY_URL", DEFAULT_GATEWAY_URL
-        )
+        self.gateway_url: str = os.getenv("OPENCLAW_GATEWAY_URL", DEFAULT_GATEWAY_URL)
         self.gateway_token: str = os.getenv("OPENCLAW_GATEWAY_TOKEN", "")
-        self.ws_manager = ws_manager      # Lab's internal WS manager
+        self.gateway_password: str = os.getenv("OPENCLAW_GATEWAY_PASSWORD", "")
+        self.ws_manager = ws_manager
         self.cost_tracker = cost_tracker
         self._ws = None
         self._connected = False
@@ -38,15 +125,12 @@ class OpenClawBridge:
         self._listen_task: Optional[asyncio.Task] = None
         self._pending_requests: Dict[str, asyncio.Future] = {}
 
-    # ------------------------------------------------------------------
-    # Connection lifecycle
-    # ------------------------------------------------------------------
-
     async def connect(self):
         """Establish WebSocket connection to OpenClaw Gateway."""
         try:
             import websockets
-            logger.info(f"Connecting to OpenClaw Gateway at {self.gateway_url}")
+
+            logger.info("Connecting to OpenClaw Gateway at %s", self.gateway_url)
             self._ws = await websockets.connect(
                 self.gateway_url,
                 ping_interval=30,
@@ -54,12 +138,38 @@ class OpenClawBridge:
                 close_timeout=5,
             )
 
-            # Wait for the connect challenge
             raw = await asyncio.wait_for(self._ws.recv(), timeout=10)
             challenge = json.loads(raw)
-            logger.info(f"Received challenge: {challenge.get('event', 'unknown')}")
+            if challenge.get("type") != "event" or challenge.get("event") != "connect.challenge":
+                raise RuntimeError("gateway connect challenge missing")
+            nonce = str((challenge.get("payload") or {}).get("nonce") or "").strip()
+            if not nonce:
+                raise RuntimeError("gateway connect challenge missing nonce")
 
-            # Send connect request
+            keypair = _ensure_device_keypair()
+            client_id = "gateway-client"
+            client_mode = "backend"
+            role = "operator"
+            scopes = ["operator.read", "operator.write"]
+            challenge_ts = (challenge.get("payload") or {}).get("ts")
+            signed_at_ms = int(challenge_ts) if isinstance(challenge_ts, (int, float)) else int(datetime.utcnow().timestamp() * 1000)
+            platform = "macos"
+            device_family = "desktop"
+            auth_token_for_sig = self.gateway_token or None
+            sig_payload = _build_v3_signature_payload(
+                device_id=keypair["device_id"],
+                client_id=client_id,
+                client_mode=client_mode,
+                role=role,
+                scopes=scopes,
+                signed_at_ms=signed_at_ms,
+                token=auth_token_for_sig,
+                nonce=nonce,
+                platform=platform,
+                device_family=device_family,
+            )
+            signature_hex = _sign_payload(keypair["private_key_hex"], sig_payload)
+
             connect_req = {
                 "type": "req",
                 "id": str(uuid.uuid4()),
@@ -68,34 +178,42 @@ class OpenClawBridge:
                     "minProtocol": self._protocol_version,
                     "maxProtocol": self._protocol_version,
                     "client": {
-                        "id": "the-lab",
+                        "id": client_id,
                         "version": "1.0.0",
-                        "platform": "web",
-                        "mode": "control",
+                        "platform": "macos",
+                        "mode": client_mode,
+                        "deviceFamily": "desktop",
                     },
-                    "role": "control",
-                    "scopes": [],
+                    "role": role,
+                    "scopes": scopes,
+                    "caps": ["tool-events"],
+                    "auth": (
+                        {"token": self.gateway_token}
+                        if self.gateway_token
+                        else ({"password": self.gateway_password} if self.gateway_password else {})
+                    ),
+                    "device": {
+                        "id": keypair["device_id"],
+                        "publicKey": _b64url(bytes.fromhex(keypair["public_key_hex"])),
+                        "signature": signature_hex,
+                        "signedAt": signed_at_ms,
+                        "nonce": nonce,
+                    },
                 },
             }
 
-            if self.gateway_token:
-                connect_req["params"]["auth"] = {"token": self.gateway_token}
-
             await self._ws.send(json.dumps(connect_req))
 
-            # Wait for connect response
             raw = await asyncio.wait_for(self._ws.recv(), timeout=10)
             resp = json.loads(raw)
-            if resp.get("type") == "res" and not resp.get("error"):
+            if resp.get("type") == "res" and resp.get("ok", False):
                 self._connected = True
                 logger.info("Connected to OpenClaw Gateway successfully")
                 self._log_activity("system", "Connected to OpenClaw Gateway")
-
-                # Start listening in background
                 self._listen_task = asyncio.create_task(self._listen())
             else:
-                error_msg = resp.get("error", {}).get("message", "Unknown error")
-                logger.error(f"Gateway connect rejected: {error_msg}")
+                error_msg = (resp.get("error") or {}).get("message", "Unknown error")
+                logger.error("Gateway connect rejected: %s", error_msg)
                 self._connected = False
 
         except ImportError:
@@ -108,11 +226,10 @@ class OpenClawBridge:
             logger.info("OpenClaw Gateway not running — bridge inactive")
             self._connected = False
         except Exception as e:
-            logger.warning(f"OpenClaw Gateway connection failed: {e}")
+            logger.warning("OpenClaw Gateway connection failed: %s", e)
             self._connected = False
 
     async def disconnect(self):
-        """Close the Gateway connection."""
         self._connected = False
         if self._listen_task:
             self._listen_task.cancel()
@@ -125,27 +242,17 @@ class OpenClawBridge:
         logger.info("Disconnected from OpenClaw Gateway")
 
     async def ensure_connected(self) -> bool:
-        """Try to connect if not already connected."""
         if self._connected and self._ws:
             return True
         await self.connect()
         return self._connected
 
-    # ------------------------------------------------------------------
-    # Gateway RPC
-    # ------------------------------------------------------------------
-
     async def _send_request(self, method: str, params: dict = None) -> dict:
-        """Send an RPC request to the Gateway and wait for response."""
         if not self._connected or not self._ws:
             return {"error": "Not connected to OpenClaw Gateway"}
 
         req_id = str(uuid.uuid4())
-        request = {
-            "type": "req",
-            "id": req_id,
-            "method": method,
-        }
+        request = {"type": "req", "id": req_id, "method": method}
         if params:
             request["params"] = params
 
@@ -164,7 +271,6 @@ class OpenClawBridge:
             return {"error": str(e)}
 
     async def _listen(self):
-        """Listen for messages from the Gateway."""
         try:
             async for raw in self._ws:
                 try:
@@ -173,14 +279,11 @@ class OpenClawBridge:
                 except json.JSONDecodeError:
                     continue
         except Exception as e:
-            logger.warning(f"Gateway listener error: {e}")
+            logger.warning("Gateway listener error: %s", e)
             self._connected = False
 
     async def _handle_message(self, msg: dict):
-        """Process incoming Gateway message."""
         msg_type = msg.get("type")
-
-        # Response to a pending request
         if msg_type == "res":
             req_id = msg.get("id")
             if req_id in self._pending_requests:
@@ -188,16 +291,12 @@ class OpenClawBridge:
                 del self._pending_requests[req_id]
             return
 
-        # Events from the Gateway
         if msg_type == "event":
             event = msg.get("event", "")
             payload = msg.get("payload", {})
             await self._handle_event(event, payload)
 
     async def _handle_event(self, event: str, payload: dict):
-        """Handle Gateway events and relay them to Lab's dashboard."""
-
-        # Agent turn events — the main content stream
         if event in ("agent.turn.start", "agent.turn.chunk", "agent.turn.end"):
             session_id = payload.get("sessionId", "")
             self._log_activity("agent", event, {
@@ -210,8 +309,6 @@ class OpenClawBridge:
                     "session_id": session_id,
                     "text_preview": payload.get("text", "")[:300],
                 })
-
-        # Tool call events
         elif event in ("tool.call", "tool.result"):
             self._log_activity("tool", event, {
                 "tool": payload.get("name", "unknown"),
@@ -222,8 +319,6 @@ class OpenClawBridge:
                     "event": event,
                     "tool": payload.get("name", "unknown"),
                 })
-
-        # Session events
         elif event.startswith("session."):
             session_id = payload.get("id", payload.get("sessionId", ""))
             if session_id:
@@ -234,8 +329,6 @@ class OpenClawBridge:
                     "updated_at": datetime.utcnow().isoformat(),
                 }
             self._log_activity("session", event, {"session_id": session_id})
-
-        # Approval required
         elif event == "approval.request":
             self._log_activity("approval", "Approval requested", payload)
             if self.ws_manager:
@@ -243,17 +336,10 @@ class OpenClawBridge:
                     "event": "approval_needed",
                     "detail": payload,
                 })
-
-        # Generic — just log it
         else:
             self._log_activity("event", event, payload)
 
-    # ------------------------------------------------------------------
-    # Public API — used by The Lab endpoints
-    # ------------------------------------------------------------------
-
     async def get_status(self) -> dict:
-        """Get OpenClaw Gateway status."""
         if not self._connected:
             return {
                 "connected": False,
@@ -270,14 +356,12 @@ class OpenClawBridge:
         }
 
     async def list_sessions(self) -> list:
-        """List active OpenClaw sessions."""
         if not await self.ensure_connected():
             return []
 
         result = await self._send_request("sessions.list")
         if "error" not in result:
             sessions = result.get("result", {}).get("sessions", [])
-            # Update local cache
             for s in sessions:
                 sid = s.get("id", "")
                 if sid:
@@ -286,41 +370,31 @@ class OpenClawBridge:
         return list(self._sessions.values())
 
     async def get_session_history(self, session_id: str) -> list:
-        """Get conversation history for a session."""
         if not await self.ensure_connected():
             return []
 
-        result = await self._send_request("sessions.history", {
-            "sessionId": session_id
-        })
+        result = await self._send_request("sessions.history", {"sessionId": session_id})
         if "error" not in result:
             return result.get("result", {}).get("messages", [])
         return []
 
     async def send_message(self, session_id: str, text: str) -> dict:
-        """Send a message to an OpenClaw session."""
         if not await self.ensure_connected():
             return {"error": "Not connected to OpenClaw Gateway"}
 
-        self._log_activity("user", f"Sent message to session {session_id[:8]}...", {
-            "text": text[:100],
-        })
-
+        self._log_activity("user", f"Sent message to session {session_id[:8]}...", {"text": text[:100]})
         result = await self._send_request("sessions.send", {
             "sessionId": session_id,
             "message": {"role": "user", "content": text},
         })
-
-        if "error" not in result:
-            if self.ws_manager:
-                await self.ws_manager.broadcast("openclaw_event", {
-                    "event": "message_sent",
-                    "session_id": session_id,
-                })
+        if "error" not in result and self.ws_manager:
+            await self.ws_manager.broadcast("openclaw_event", {
+                "event": "message_sent",
+                "session_id": session_id,
+            })
         return result
 
     async def create_session(self, name: str = None) -> dict:
-        """Create a new OpenClaw session."""
         if not await self.ensure_connected():
             return {"error": "Not connected to OpenClaw Gateway"}
 
@@ -338,12 +412,9 @@ class OpenClawBridge:
         return result
 
     async def get_provider_info(self) -> dict:
-        """Get OpenClaw's configured providers and auth profiles."""
         if not await self.ensure_connected():
-            # Fallback: check the filesystem for auth profiles
             return await self._detect_auth_profiles()
 
-        # Try to get status from Gateway which may include model/provider info
         result = await self._send_request("status", {})
         provider_info = {
             "providers": [],
@@ -366,18 +437,16 @@ class OpenClawBridge:
                 elif "key" in auth_type.lower() or "api" in auth_type.lower():
                     provider_info["api_key_providers"].append(name)
 
-        # Also check filesystem for auth profiles
         fs_info = await self._detect_auth_profiles()
-        # Merge — filesystem profiles may have info Gateway didn't report
         for p in fs_info.get("oauth_profiles", []):
             if p not in provider_info["oauth_profiles"]:
                 provider_info["oauth_profiles"].append(p)
+        if not provider_info.get("primary_model"):
+            provider_info["primary_model"] = fs_info.get("primary_model")
 
         return provider_info
 
     async def _detect_auth_profiles(self) -> dict:
-        """Check ~/.openclaw/auth-profiles/ for OAuth config files."""
-        import glob as glob_mod
         home = os.path.expanduser("~")
         auth_dir = os.path.join(home, ".openclaw", "auth-profiles")
         result = {
@@ -389,34 +458,45 @@ class OpenClawBridge:
         if os.path.isdir(auth_dir):
             for f in os.listdir(auth_dir):
                 if f.endswith(".json"):
-                    profile_name = f.replace(".json", "")
-                    result["oauth_profiles"].append(profile_name)
+                    result["oauth_profiles"].append(f.replace(".json", ""))
 
-        # Check openclaw.json for primary model
+        # Also support OpenClaw's agent auth store layout
+        # ~/.openclaw/agents/main/agent/auth-profiles.json
+        agent_auth_profiles = os.path.join(home, ".openclaw", "agents", "main", "agent", "auth-profiles.json")
+        if os.path.isfile(agent_auth_profiles):
+            try:
+                with open(agent_auth_profiles) as fh:
+                    data = json.load(fh)
+                profiles = data.get("profiles", {}) if isinstance(data, dict) else {}
+                if isinstance(profiles, dict):
+                    for provider in profiles.keys():
+                        if isinstance(provider, str) and provider.strip():
+                            name = provider.strip()
+                            if name not in result["oauth_profiles"]:
+                                result["oauth_profiles"].append(name)
+            except Exception:
+                pass
+
         config_path = os.path.join(home, ".openclaw", "openclaw.json")
         if os.path.isfile(config_path):
             try:
                 with open(config_path) as fh:
                     config = json.load(fh)
-                    agents = config.get("agents", {})
-                    defaults = agents.get("defaults", {})
-                    model = defaults.get("model", {})
-                    result["primary_model"] = model.get("primary")
+                result["primary_model"] = (
+                    config.get("agents", {})
+                    .get("defaults", {})
+                    .get("model", {})
+                    .get("primary")
+                )
             except Exception:
                 pass
 
         return result
 
     def get_activity(self, limit: int = 50) -> list:
-        """Get recent OpenClaw activity log."""
-        return self._activity_log[-limit:][::-1]  # Most recent first
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+        return self._activity_log[-limit:][::-1]
 
     def _log_activity(self, category: str, description: str, detail: dict = None):
-        """Append to the in-memory activity log."""
         entry = {
             "id": str(uuid.uuid4())[:8],
             "category": category,
