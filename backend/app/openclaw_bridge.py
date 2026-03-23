@@ -376,8 +376,10 @@ class OpenClawBridge:
             full_prompt = prompt
             if system_prompt:
                 full_prompt = (
-                    f"<system>\n{system_prompt}\n</system>\n\n"
-                    f"<user>\n{prompt}\n</user>"
+                    f"IMPORTANT INSTRUCTIONS — follow these for every response:\n"
+                    f"{system_prompt}\n\n"
+                    f"---\n\n"
+                    f"USER REQUEST:\n{prompt}"
                 )
 
             before = await self._send_request("chat.history", {
@@ -387,6 +389,7 @@ class OpenClawBridge:
             before_msgs = (before.get("payload") or {}).get("messages", []) if isinstance(before, dict) else []
             before_count = len(before_msgs)
 
+            sent_at_ms = int(datetime.utcnow().timestamp() * 1000)
             send_res = await self._send_request("chat.send", {
                 "sessionKey": session_key,
                 "message": full_prompt,
@@ -408,10 +411,35 @@ class OpenClawBridge:
                     continue
                 msgs = (hist.get("payload") or {}).get("messages", [])
                 if len(msgs) > before_count:
-                    for m in reversed(msgs):
-                        if (m.get("role") or "").lower() == "assistant":
-                            response_text = self._extract_message_text(m)
-                            if response_text.strip():
+                    # Pick assistant reply corresponding to this exact user message
+                    target_idx = -1
+                    for i, m in enumerate(msgs):
+                        if (m.get("role") or "").lower() != "user":
+                            continue
+                        user_text = self._extract_message_text(m)
+                        ts = m.get("timestamp")
+                        try:
+                            ts_int = int(ts)
+                        except Exception:
+                            ts_int = 0
+                        if ts_int and ts_int < sent_at_ms:
+                            continue
+                        if full_prompt.strip() in user_text:
+                            target_idx = i
+                    if target_idx >= 0:
+                        for m in msgs[target_idx + 1:]:
+                            if (m.get("role") or "").lower() != "assistant":
+                                continue
+                            ts = m.get("timestamp")
+                            try:
+                                ts_int = int(ts)
+                            except Exception:
+                                ts_int = 0
+                            if ts_int and ts_int < sent_at_ms:
+                                continue
+                            candidate = self._extract_message_text(m)
+                            if candidate.strip():
+                                response_text = candidate
                                 break
                 if response_text.strip():
                     break
@@ -433,7 +461,7 @@ class OpenClawBridge:
     def _get_or_create_agent_session(self, agent_name: str) -> str:
         if agent_name in self._agent_sessions:
             return self._agent_sessions[agent_name]
-        key = f"the-lab-{agent_name}"
+        key = f"the-lab-v3-{agent_name}"
         self._agent_sessions[agent_name] = key
         return key
 
@@ -449,8 +477,6 @@ class OpenClawBridge:
                         parts.append(item["text"])
                     elif isinstance(item.get("outputText"), str):
                         parts.append(item["outputText"])
-                    elif isinstance(item.get("thinking"), str) and item.get("thinking").strip():
-                        parts.append(item["thinking"])
             return "\n".join([p for p in parts if p]).strip()
         return ""
 

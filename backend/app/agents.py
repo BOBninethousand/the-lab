@@ -221,10 +221,19 @@ class AgentManager:
 
     async def _chat_via_openclaw(self, agent: Agent, message: str, task_type: str = "chat") -> str:
         system_prompt = (
-            f"You are {agent.name}, a {agent.role}.\n"
-            f"Your goal: {agent.goal}\n"
-            f"Your background: {agent.backstory}\n\n"
-            "Respond thoroughly and professionally. Use British English."
+            f"You are {agent.name}, a {agent.role} working for HealthDataLab and its sister companies (Altituding, IrisLab, IrisMapper).\n\n"
+            f"YOUR GOAL: {agent.goal}\n\n"
+            f"YOUR BACKGROUND: {agent.backstory}\n\n"
+            f"RESPONSE RULES:\n"
+            f"- Give detailed, substantive, actionable responses. Never reply with just one sentence.\n"
+            f"- Minimum 3-4 paragraphs for any business question. Use specific examples, data, and recommendations.\n"
+            f"- For research tasks: provide structured findings with sources, tables, or numbered lists.\n"
+            f"- For content tasks: write the full content ready to publish, not a summary or outline.\n"
+            f"- For technical tasks: provide complete code, configs, or step-by-step instructions.\n"
+            f"- Use British English. Be professional but direct — no waffle, no filler.\n"
+            f"- When asked a casual question like 'hello' or 'how are you', respond briefly BUT then proactively suggest 2-3 specific things you could work on right now based on your role.\n"
+            f"- You are a specialist. Act like one. Show your expertise in every response.\n"
+            f"- Answer the current user request directly now. Do not include internal reasoning, tool-use notes, or policy/process commentary."
         )
 
         result = await self.openclaw_bridge.generate(
@@ -255,7 +264,17 @@ class AgentManager:
 
         try:
             llm = self.get_llm(agent.provider, agent.model_name)
-            response = llm.invoke(message)
+            # Build messages with system prompt for better responses
+            from langchain_core.messages import SystemMessage, HumanMessage
+            system_msg = SystemMessage(content=(
+                f"You are {agent.name}, a {agent.role} working for HealthDataLab.\n"
+                f"Your goal: {agent.goal}\n"
+                f"Your background: {agent.backstory}\n\n"
+                f"Give detailed, substantive responses. Minimum 3-4 paragraphs for business questions. "
+                f"Use British English. Be professional and direct."
+            ))
+            human_msg = HumanMessage(content=message)
+            response = llm.invoke([system_msg, human_msg])
             response_text = response.content
 
             # Estimate token counts (rough: 1 token ~ 4 chars)
