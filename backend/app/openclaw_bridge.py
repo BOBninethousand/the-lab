@@ -124,6 +124,9 @@ class OpenClawBridge:
         self._reconnect_task: Optional[asyncio.Task] = None
         self._listen_task: Optional[asyncio.Task] = None
         self._pending_requests: Dict[str, asyncio.Future] = {}
+        self._response_collectors: Dict[str, asyncio.Future] = {}
+        self._response_chunks: Dict[str, List[str]] = {}
+        self._agent_sessions: Dict[str, str] = {}
 
     async def connect(self):
         """Establish WebSocket connection to OpenClaw Gateway."""
@@ -150,7 +153,7 @@ class OpenClawBridge:
             client_id = "gateway-client"
             client_mode = "backend"
             role = "operator"
-            scopes = ["operator.read", "operator.write"]
+            scopes = ["operator.read", "operator.write", "operator.admin"]
             challenge_ts = (challenge.get("payload") or {}).get("ts")
             signed_at_ms = int(challenge_ts) if isinstance(challenge_ts, (int, float)) else int(datetime.utcnow().timestamp() * 1000)
             platform = "macos"
@@ -299,6 +302,21 @@ class OpenClawBridge:
     async def _handle_event(self, event: str, payload: dict):
         if event in ("agent.turn.start", "agent.turn.chunk", "agent.turn.end"):
             session_id = payload.get("sessionId", "")
+
+            if event == "agent.turn.chunk" and session_id in self._response_chunks:
+                chunk_text = payload.get("text", "")
+                if chunk_text:
+                    self._response_chunks[session_id].append(chunk_text)
+
+            if event == "agent.turn.end" and session_id in self._response_collectors:
+                future = self._response_collectors.pop(session_id)
+                full_text = payload.get("text", "")
+                if not full_text and session_id in self._response_chunks:
+                    full_text = "".join(self._response_chunks[session_id])
+                self._response_chunks.pop(session_id, None)
+                if not future.done():
+                    future.set_result(full_text)
+
             self._log_activity("agent", event, {
                 "session_id": session_id,
                 "preview": payload.get("text", "")[:200] if payload.get("text") else "",
@@ -339,6 +357,103 @@ class OpenClawBridge:
         else:
             self._log_activity("event", event, payload)
 
+    @property
+    def is_connected(self) -> bool:
+        return self._connected and self._ws is not None
+
+    async def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        agent_name: str = "default",
+        timeout: float = 120.0,
+    ) -> dict:
+        if not await self.ensure_connected():
+            return {"error": "OpenClaw Gateway not connected"}
+
+        try:
+            session_key = self._get_or_create_agent_session(agent_name)
+            full_prompt = prompt
+            if system_prompt:
+                full_prompt = (
+                    f"<system>\n{system_prompt}\n</system>\n\n"
+                    f"<user>\n{prompt}\n</user>"
+                )
+
+            before = await self._send_request("chat.history", {
+                "sessionKey": session_key,
+                "limit": 6,
+            })
+            before_msgs = (before.get("payload") or {}).get("messages", []) if isinstance(before, dict) else []
+            before_count = len(before_msgs)
+
+            send_res = await self._send_request("chat.send", {
+                "sessionKey": session_key,
+                "message": full_prompt,
+                "idempotencyKey": f"lab-{uuid.uuid4().hex}",
+            })
+            if send_res.get("ok") is False:
+                err = (send_res.get("error") or {}).get("message", "chat.send failed")
+                return {"error": f"Gateway send failed: {err}"}
+
+            deadline = asyncio.get_event_loop().time() + timeout
+            response_text = ""
+            while asyncio.get_event_loop().time() < deadline:
+                hist = await self._send_request("chat.history", {
+                    "sessionKey": session_key,
+                    "limit": 20,
+                })
+                if hist.get("ok") is False:
+                    await asyncio.sleep(1.2)
+                    continue
+                msgs = (hist.get("payload") or {}).get("messages", [])
+                if len(msgs) > before_count:
+                    for m in reversed(msgs):
+                        if (m.get("role") or "").lower() == "assistant":
+                            response_text = self._extract_message_text(m)
+                            if response_text.strip():
+                                break
+                if response_text.strip():
+                    break
+                await asyncio.sleep(1.2)
+
+            if not response_text.strip():
+                return {"error": f"OpenClaw response timed out after {timeout}s"}
+
+            return {
+                "response": response_text,
+                "session_id": session_key,
+                "input_tokens": max(len(full_prompt) // 4, 1),
+                "output_tokens": max(len(response_text) // 4, 1),
+            }
+        except Exception as e:
+            logger.error("OpenClaw generate error: %s", e)
+            return {"error": f"OpenClaw generate failed: {str(e)}"}
+
+    def _get_or_create_agent_session(self, agent_name: str) -> str:
+        if agent_name in self._agent_sessions:
+            return self._agent_sessions[agent_name]
+        key = f"the-lab-{agent_name}"
+        self._agent_sessions[agent_name] = key
+        return key
+
+    def _extract_message_text(self, msg: dict) -> str:
+        content = msg.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if isinstance(item.get("text"), str):
+                        parts.append(item["text"])
+                    elif isinstance(item.get("outputText"), str):
+                        parts.append(item["outputText"])
+                    elif isinstance(item.get("thinking"), str) and item.get("thinking").strip():
+                        parts.append(item["thinking"])
+            return "\n".join([p for p in parts if p]).strip()
+        return ""
+
     async def get_status(self) -> dict:
         if not self._connected:
             return {
@@ -346,6 +461,7 @@ class OpenClawBridge:
                 "gateway_url": self.gateway_url,
                 "sessions": 0,
                 "activity_count": len(self._activity_log),
+                "llm_proxy_available": False,
             }
 
         return {
@@ -353,6 +469,10 @@ class OpenClawBridge:
             "gateway_url": self.gateway_url,
             "sessions": len(self._sessions),
             "activity_count": len(self._activity_log),
+            "llm_proxy_available": True,
+            "agent_sessions": {
+                name: sid[:8] + "..." for name, sid in self._agent_sessions.items()
+            },
         }
 
     async def list_sessions(self) -> list:

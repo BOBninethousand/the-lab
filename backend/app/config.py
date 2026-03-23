@@ -15,6 +15,7 @@ class Settings:
     DISCORD_CHANNEL_DIGEST: str = os.getenv("DISCORD_CHANNEL_DIGEST", "")
     OPENCLAW_GATEWAY_URL: str = os.getenv("OPENCLAW_GATEWAY_URL", "ws://127.0.0.1:18789")
     OPENCLAW_GATEWAY_TOKEN: str = os.getenv("OPENCLAW_GATEWAY_TOKEN", "")
+    USE_OPENCLAW_FOR_AGENTS: bool = os.getenv("USE_OPENCLAW_FOR_AGENTS", "false").lower() in ("1", "true", "yes", "on")
     SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0")
     SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8000"))
     DATA_DIR: str = os.getenv("DATA_DIR", "./data")

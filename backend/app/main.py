@@ -36,6 +36,7 @@ document_manager = DocumentManager()
 scheduler_manager = SchedulerManager(agent_manager, document_manager, ws_manager)
 crew_manager = CrewManager(agent_manager, ws_manager)
 openclaw_bridge = OpenClawBridge(ws_manager=ws_manager, cost_tracker=cost_tracker)
+agent_manager.openclaw_bridge = openclaw_bridge
 
 
 @asynccontextmanager
@@ -145,8 +146,8 @@ async def chat(data: ChatRequest):
     )
 
     try:
-        response = await asyncio.to_thread(
-            agent_manager.chat, data.agent_id, data.message
+        response = await agent_manager.chat_async(
+            data.agent_id, data.message
         )
         agent_manager.update_status(data.agent_id, "idle", None)
         await ws_manager.broadcast(

@@ -14,6 +14,7 @@ AVATAR_COLORS = {
     "openai": "#3b6fcc",
     "anthropic": "#c4682d",
     "ollama": "#7c5bbf",
+    "openclaw": "#10b981",
 }
 
 DEFAULT_AGENTS = [
@@ -201,6 +202,51 @@ class AgentManager:
             return ChatOllama(model=model_name, base_url=settings.OLLAMA_BASE_URL)
         else:
             raise ValueError(f"Unknown provider: {provider}")
+
+    def _should_use_openclaw(self) -> bool:
+        if not settings.USE_OPENCLAW_FOR_AGENTS:
+            return False
+        return bool(self.openclaw_bridge and self.openclaw_bridge.is_connected)
+
+    async def chat_async(self, agent_id: str, message: str, task_type: str = "chat") -> str:
+        agent = self.get_agent(agent_id)
+        if not agent:
+            return "Error: Agent not found"
+
+        if self._should_use_openclaw():
+            return await self._chat_via_openclaw(agent, message, task_type)
+
+        import asyncio
+        return await asyncio.to_thread(self.chat, agent_id, message, task_type)
+
+    async def _chat_via_openclaw(self, agent: Agent, message: str, task_type: str = "chat") -> str:
+        system_prompt = (
+            f"You are {agent.name}, a {agent.role}.\n"
+            f"Your goal: {agent.goal}\n"
+            f"Your background: {agent.backstory}\n\n"
+            "Respond thoroughly and professionally. Use British English."
+        )
+
+        result = await self.openclaw_bridge.generate(
+            prompt=message,
+            system_prompt=system_prompt,
+            agent_name=agent.name.lower(),
+            timeout=120.0,
+        )
+
+        if "error" in result:
+            return f"Error: {result['error']}"
+
+        response_text = result.get("response", "")
+        input_tokens = result.get("input_tokens", max(len(message) // 4, 1))
+        output_tokens = result.get("output_tokens", max(len(response_text) // 4, 1))
+
+        # OpenClaw/Codex OAuth uses flat-rate subscription billing.
+        # Skip per-token API cost logging to avoid misreporting usage spend.
+
+        self._save_chat_message(agent.id, "user", message)
+        self._save_chat_message(agent.id, "assistant", response_text)
+        return response_text
 
     def chat(self, agent_id: str, message: str, task_type: str = "chat") -> str:
         agent = self.get_agent(agent_id)
