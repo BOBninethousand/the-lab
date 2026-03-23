@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  lab-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_CHANNEL_BRIEFS=${DISCORD_CHANNEL_BRIEFS}
+      - DISCORD_CHANNEL_CONTENT=${DISCORD_CHANNEL_CONTENT}
+      - DISCORD_CHANNEL_ALERTS=${DISCORD_CHANNEL_ALERTS}
+      - DISCORD_CHANNEL_DIGEST=${DISCORD_CHANNEL_DIGEST}
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

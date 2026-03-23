@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background-color: #0C0C0D;
+  color: #f9fafb;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Typography */
+.text-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #f9fafb;
+}
+
+.text-section-label {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.text-stat {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #f9fafb;
+}
+
+.text-body {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #9ca3af;
+}
+
+.text-small {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6b7280;
+}
+
+/* Cards */
+.card {
+  background-color: #141415;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.card-elevated {
+  background-color: #1C1C1E;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+/* Transitions */
+.transition-subtle {
+  transition: all 150ms ease;
+}
+
+/* Animations */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s ease-in-out infinite;
+}
+
+@keyframes dot-blink {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-dot-blink {
+  animation: dot-blink 1.4s ease-in-out infinite;
+}
+
+.animate-dot-blink-1 {
+  animation-delay: 0s;
+}
+
+.animate-dot-blink-2 {
+  animation-delay: 0.2s;
+}
+
+.animate-dot-blink-3 {
+  animation-delay: 0.4s;
+}
+
+/* Status indicator */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.active {
+  background-color: #22c55e;
+}
+
+.status-dot.idle {
+  background-color: #6b7280;
+}
+
+.status-dot.error {
+  background-color: #ef4444;
+}
+
+.status-dot.warning {
+  background-color: #f59e0b;
+}

@@ -1,0 +1,148 @@
+import React from 'react'
+import { useLocation, Link } from 'react-router-dom'
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  CalendarDays,
+  Brain,
+  FileText,
+  GitBranch,
+  FlaskConical,
+  DollarSign,
+  Plug,
+  Settings
+} from 'lucide-react'
+import { useWebSocket } from '../hooks/useWebSocket'
+
+const navItems = [
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { label: 'Agents', icon: Users, path: '/agents' },
+  { label: 'Office', icon: Building2, path: '/office' },
+  { label: 'Calendar', icon: CalendarDays, path: '/calendar' },
+  { label: 'Memory', icon: Brain, path: '/memory' },
+  { label: 'Documents', icon: FileText, path: '/documents' },
+  { label: 'Teams', icon: GitBranch, path: '/teams' },
+  { label: 'Costs', icon: DollarSign, path: '/costs' },
+  { label: 'OpenClaw', icon: Plug, path: '/openclaw' },
+]
+
+const bottomNavItems = [
+  { label: 'Settings', icon: Settings, path: '/settings' },
+]
+
+const pageNames = {
+  '/': 'Dashboard',
+  '/agents': 'Agents',
+  '/office': 'Office',
+  '/calendar': 'Calendar',
+  '/memory': 'Memory',
+  '/documents': 'Documents',
+  '/teams': 'Teams',
+  '/costs': 'Costs',
+  '/openclaw': 'OpenClaw',
+  '/settings': 'Settings',
+}
+
+export function Layout({ children }) {
+  const location = useLocation()
+  const { isConnected } = useWebSocket()
+
+  const currentPageName = pageNames[location.pathname] || 'Dashboard'
+
+  return (
+    <div className="flex h-screen bg-lab-bg text-lab-text-primary">
+      {/* Sidebar */}
+      <div className="w-[220px] border-r border-lab-border flex flex-col">
+        {/* Branding */}
+        <div className="px-4 py-5 border-b border-lab-border flex items-center gap-3">
+          <FlaskConical size={16} className="text-lab-text-muted flex-shrink-0" />
+          <span className="text-sm font-semibold tracking-tight">The Lab</span>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-6">
+          <div className="px-3 mb-3">
+            <span className="text-xs font-medium uppercase tracking-widest text-lab-text-faint">
+              Navigation
+            </span>
+          </div>
+
+          <div className="space-px-3">
+            {navItems.map(item => {
+              const Icon = item.icon
+              const isActive = location.pathname === item.path
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle ${
+                    isActive
+                      ? 'bg-white/[0.06] border-l-2 border-white text-white'
+                      : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                  }`}
+                >
+                  <Icon
+                    size={16}
+                    className={isActive ? 'text-white' : 'text-lab-text-muted'}
+                  />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </nav>
+
+        {/* Bottom nav */}
+        <div className="border-t border-lab-border py-3">
+          {bottomNavItems.map(item => {
+            const Icon = item.icon
+            const isActive = location.pathname === item.path
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle ${
+                  isActive
+                    ? 'bg-white/[0.06] border-l-2 border-white text-white'
+                    : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                }`}
+              >
+                <Icon
+                  size={16}
+                  className={isActive ? 'text-white' : 'text-lab-text-muted'}
+                />
+                <span className="text-sm font-medium">{item.label}</span>
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col">
+        {/* Top bar */}
+        <div className="h-12 border-b border-lab-border flex items-center justify-between px-8">
+          <h1 className="text-page-title">{currentPageName}</h1>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isConnected ? 'bg-lab-success' : 'bg-lab-text-muted'
+                }`}
+              />
+              <span className="text-xs text-lab-text-muted">
+                {isConnected ? 'Connected' : 'Offline'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-auto">
+          <div className="p-8">{children}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
