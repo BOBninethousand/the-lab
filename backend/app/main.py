@@ -357,6 +357,9 @@ async def get_settings():
         "daily_budget_usd": cost_tracker.daily_budget,
         "server_host": settings.SERVER_HOST,
         "server_port": settings.SERVER_PORT,
+        "use_openclaw_for_agents": settings.USE_OPENCLAW_FOR_AGENTS,
+        "openclaw_connected": openclaw_bridge.is_connected,
+        "openclaw_llm_active": settings.USE_OPENCLAW_FOR_AGENTS and openclaw_bridge.is_connected,
     }
 
 

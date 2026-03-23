@@ -16,23 +16,42 @@ export function Agents() {
   const [agentStats, setAgentStats] = useState({})
   const [settings, setSettings] = useState({})
   const messagesEndRef = useRef(null)
+  const chatContainerRef = useRef(null)
 
   const [formData, setFormData] = useState({
     name: '',
     role: '',
     goal: '',
     backstory: '',
-    provider: 'openai',
-    model_name: 'gpt-4o',
+    provider: 'anthropic',
+    model_name: 'claude-sonnet-4-20250514',
   })
 
   useEffect(() => {
     loadAgents()
     loadSettings()
+
+    // Listen for WebSocket agent status updates
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`)
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        if (msg.type === 'agent_status' && msg.data) {
+          setAgents(prev => prev.map(a =>
+            a.id === msg.data.id ? { ...a, status: msg.data.status, current_task: msg.data.current_task } : a
+          ))
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return () => ws.close()
   }, [])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
   }, [messages])
 
   const loadAgents = async () => {
@@ -62,17 +81,13 @@ export function Agents() {
     try {
       const docsRes = await fetch(`${API}/api/documents`)
       const docs = docsRes.ok ? await docsRes.json() : []
-
       const costsRes = await fetch(`${API}/api/costs/recent?limit=100`)
       const costs = costsRes.ok ? await costsRes.json() : []
 
       const stats = {}
       for (const agent of agentList) {
         const agentDocs = Array.isArray(docs) ? docs.filter(d => d.agent_id === agent.id) : []
-        const agentCosts = Array.isArray(costs)
-          ? costs.filter(c => c.agent_id === agent.id || c.agent_name === agent.name)
-          : []
-
+        const agentCosts = Array.isArray(costs) ? costs.filter(c => c.agent_id === agent.id || c.agent_name === agent.name) : []
         let chatCount = 0
         try {
           const chatRes = await fetch(`${API}/api/chat/${agent.id}/history`)
@@ -102,80 +117,52 @@ export function Agents() {
   const handleSelectAgent = async (agent) => {
     setSelectedAgent(agent)
     setMessageInput('')
-    try {
-      const res = await fetch(`${API}/api/chat/${agent.id}/history`)
-      const history = res.ok ? await res.json() : []
-      if (Array.isArray(history) && history.length > 0) {
-        setMessages(history.map((m, i) => ({
-          id: m.id || i,
-          role: m.role,
-          content: m.content,
-          route: m.route,
-          timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
-        })))
-      } else {
-        setMessages([
-          {
-            id: 1,
-            role: 'assistant',
-            content: `Hi, I'm ${agent.name}. How can I help you?`,
-            timestamp: new Date(),
-          },
-        ])
-      }
-    } catch (e) {
-      setMessages([
-        {
-          id: 1,
-          role: 'assistant',
-          content: `Hi, I'm ${agent.name}. How can I help you?`,
-          timestamp: new Date(),
-        },
-      ])
-    }
+    // Start with a fresh greeting — don't load old Zeus prompts
+    setMessages([{
+      id: 'welcome',
+      role: 'assistant',
+      content: `Hi, I'm ${agent.name} — ${agent.role}. What would you like me to work on?`,
+      timestamp: new Date(),
+    }])
   }
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || !selectedAgent) return
+    if (!messageInput.trim() || !selectedAgent || isSending) return
 
-    const userMessage = {
-      id: messages.length + 1,
-      role: 'user',
-      content: messageInput,
-      timestamp: new Date(),
-    }
-
+    const userMessage = { id: Date.now(), role: 'user', content: messageInput, timestamp: new Date() }
     setMessages(prev => [...prev, userMessage])
     const prompt = messageInput
     setMessageInput('')
     setIsSending(true)
 
+    // Optimistic status update
+    setAgents(prev => prev.map(a =>
+      a.id === selectedAgent.id ? { ...a, status: 'working', current_task: 'Responding to chat' } : a
+    ))
+
     try {
       const result = await sendChat(selectedAgent.id, prompt)
-      const route = result.route || 'unknown'
-      setMessages(prev => [
-        ...prev,
-        {
-          id: prev.length + 1,
-          role: 'assistant',
-          content: result.response || 'No response received.',
-          route,
-          timestamp: new Date(),
-        },
-      ])
+      const route = result.route || ''
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: result.response || 'No response received.',
+        route,
+        timestamp: new Date(),
+      }])
       loadAgentStats(agents)
     } catch (err) {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: prev.length + 1,
-          role: 'assistant',
-          content: `Error: ${err.message}`,
-          timestamp: new Date(),
-        },
-      ])
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: `Error: ${err.message}`,
+        timestamp: new Date(),
+      }])
     } finally {
       setIsSending(false)
+      setAgents(prev => prev.map(a =>
+        a.id === selectedAgent.id ? { ...a, status: 'idle', current_task: null } : a
+      ))
     }
   }
 
@@ -186,6 +173,7 @@ export function Agents() {
       setAgents(prev => prev.filter(a => a.id !== id))
       if (selectedAgent?.id === id) {
         setSelectedAgent(null)
+        setMessages([])
       }
     } catch (err) {
       console.error('Failed to delete agent:', err)
@@ -195,7 +183,6 @@ export function Agents() {
   const handleAddAgent = async (e) => {
     e.preventDefault()
     if (!formData.name || !formData.role) return
-
     try {
       await createAgent({
         name: formData.name,
@@ -205,7 +192,7 @@ export function Agents() {
         provider: formData.provider,
         model_name: formData.model_name,
       })
-      setFormData({ name: '', role: '', goal: '', backstory: '', provider: 'openai', model_name: 'gpt-4o' })
+      setFormData({ name: '', role: '', goal: '', backstory: '', provider: 'anthropic', model_name: 'claude-sonnet-4-20250514' })
       setShowAddModal(false)
       loadAgents()
     } catch (err) {
@@ -214,31 +201,30 @@ export function Agents() {
   }
 
   const formatTimeAgo = (timestamp) => {
-    if (!timestamp) return 'No activity yet'
-    const now = new Date()
-    const then = new Date(timestamp)
-    const diff = Math.floor((now - then) / 1000)
+    if (!timestamp) return 'No activity'
+    const diff = Math.floor((new Date() - new Date(timestamp)) / 1000)
     if (diff < 60) return 'Just now'
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
     return `${Math.floor(diff / 86400)}d ago`
   }
 
-  const isOpenClawActive = settings.openclaw_llm_active || false
+  const isOpenClawActive = settings.openclaw_llm_active || settings.use_openclaw_for_agents || false
 
   return (
-    <div className="flex h-full gap-6">
-      <div className={`flex-1 ${selectedAgent ? '' : ''}`}>
+    <div className="flex h-full overflow-hidden">
+      {/* Main content — agent cards */}
+      <div className="flex-1 overflow-y-auto pr-2">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <h2 className="text-section-label">Manage Agents</h2>
             {isOpenClawActive ? (
-              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] text-emerald-400">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] text-emerald-400 font-medium">
                 <Wifi size={10} />
                 Routing via OpenClaw
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-[10px] text-amber-400">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full text-[10px] text-amber-400 font-medium">
                 <Zap size={10} />
                 Using API Keys
               </span>
@@ -248,24 +234,18 @@ export function Agents() {
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
           >
-            <Plus size={14} />
-            Add Agent
+            <Plus size={14} /> Add Agent
           </button>
         </div>
 
         {isLoading ? (
           <div className="grid grid-cols-2 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-48 bg-lab-surface rounded animate-pulse" />
-            ))}
+            {[...Array(4)].map((_, i) => <div key={i} className="h-48 bg-lab-surface rounded animate-pulse" />)}
           </div>
         ) : agents.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-sm text-lab-text-faint mb-4">No agents available</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="text-xs text-lab-accent hover:text-lab-accent/80 transition-subtle"
-            >
+            <button onClick={() => setShowAddModal(true)} className="text-xs text-lab-accent hover:text-lab-accent/80 transition-subtle">
               Create your first agent
             </button>
           </div>
@@ -273,25 +253,30 @@ export function Agents() {
           <div className="grid grid-cols-2 gap-4">
             {agents.map(agent => {
               const stats = agentStats[agent.id] || {}
+              const isWorking = agent.status === 'working'
               return (
                 <button
                   key={agent.id}
                   onClick={() => handleSelectAgent(agent)}
-                  className={`card transition-subtle cursor-pointer border-lab-border hover:border-lab-border-hover group ${
+                  className={`card transition-subtle cursor-pointer border-lab-border hover:border-lab-border-hover group text-left ${
                     selectedAgent?.id === agent.id ? 'border-lab-accent' : ''
-                  }`}
+                  } ${isWorking ? 'ring-1 ring-blue-500/30' : ''}`}
                 >
                   <div className="flex items-start gap-3 mb-3">
-                    <AvatarCircle name={agent.name} agent={agent.agent_type} size={36} />
-                    <div className="flex-1 text-left">
-                      <div className="text-sm font-medium text-lab-text-primary">{agent.name}</div>
-                      <div className="text-xs text-lab-text-muted">{agent.role}</div>
+                    <div className="relative">
+                      <AvatarCircle name={agent.name} agent={agent.agent_type} size={36} />
+                      {isWorking && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-lab-surface animate-pulse" />
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      {agent.status === 'working' ? (
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-lab-text-primary truncate">{agent.name}</div>
+                      <div className="text-xs text-lab-text-muted truncate">{agent.role}</div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {isWorking ? (
                         <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 rounded text-[10px] text-blue-400">
-                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-                          Working
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" /> Working
                         </span>
                       ) : agent.status === 'error' ? (
                         <span className="px-2 py-0.5 bg-red-500/10 rounded text-[10px] text-red-400">Error</span>
@@ -310,41 +295,29 @@ export function Agents() {
                     </div>
                   </div>
 
-                  <p className="text-xs text-lab-text-secondary mb-4 line-clamp-2 text-left">
-                    {agent.goal || 'No description'}
-                  </p>
+                  <p className="text-xs text-lab-text-secondary mb-4 line-clamp-2">{agent.goal || 'No description'}</p>
 
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
                       <div className="text-sm font-semibold text-lab-text-primary">{stats.documents || 0}</div>
-                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1">
-                        <FileText size={9} />
-                        Docs
-                      </div>
+                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><FileText size={9} /> Docs</div>
                     </div>
                     <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
                       <div className="text-sm font-semibold text-lab-text-primary">{stats.responses || 0}</div>
-                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1">
-                        <Bot size={9} />
-                        Chats
-                      </div>
+                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><Bot size={9} /> Chats</div>
                     </div>
                     <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
                       <div className="text-sm font-semibold text-lab-text-primary">{stats.apiCalls || 0}</div>
-                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1">
-                        <Zap size={9} />
-                        Calls
-                      </div>
+                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><Zap size={9} /> Calls</div>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-lab-border/50">
-                    <span className="inline-block px-2 py-0.5 bg-lab-elevated text-[10px] text-lab-text-muted rounded">
+                    <span className="px-2 py-0.5 bg-lab-elevated text-[10px] text-lab-text-muted rounded">
                       {isOpenClawActive ? 'openclaw' : agent.provider}
                     </span>
                     <div className="flex items-center gap-1 text-[10px] text-lab-text-muted">
-                      <Clock size={9} />
-                      {formatTimeAgo(stats.lastActive)}
+                      <Clock size={9} /> {formatTimeAgo(stats.lastActive)}
                     </div>
                   </div>
                 </button>
@@ -354,9 +327,11 @@ export function Agents() {
         )}
       </div>
 
+      {/* Chat panel — FIXED: proper scroll container with constrained height */}
       {selectedAgent && (
-        <div className="w-[420px] flex flex-col border-l border-lab-border bg-lab-surface">
-          <div className="flex items-center justify-between p-4 border-b border-lab-border">
+        <div className="w-[420px] flex-shrink-0 flex flex-col h-full border-l border-lab-border bg-lab-surface">
+          {/* Header — fixed */}
+          <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-lab-border">
             <div className="flex items-center gap-3">
               <AvatarCircle name={selectedAgent.name} agent={selectedAgent.agent_type} size={28} />
               <div>
@@ -364,27 +339,25 @@ export function Agents() {
                 <div className="text-[10px] text-lab-text-muted">{selectedAgent.role}</div>
               </div>
             </div>
-            <button
-              onClick={() => {
-                setSelectedAgent(null)
-                setMessages([])
-              }}
-              className="p-1 hover:bg-white/[0.1] rounded transition-subtle"
-            >
+            <button onClick={() => { setSelectedAgent(null); setMessages([]) }} className="p-1 hover:bg-white/[0.1] rounded transition-subtle">
               <X size={16} className="text-lab-text-secondary" />
             </button>
           </div>
 
+          {/* Routing badge — fixed */}
           {isOpenClawActive && (
-            <div className="px-4 py-2 bg-emerald-500/5 border-b border-emerald-500/10 flex items-center gap-2">
+            <div className="flex-shrink-0 px-4 py-2 bg-emerald-500/5 border-b border-emerald-500/10 flex items-center gap-2">
               <Wifi size={11} className="text-emerald-400" />
-              <span className="text-[10px] text-emerald-400">
-                Responses routed via OpenClaw — using your subscription (no API cost)
-              </span>
+              <span className="text-[10px] text-emerald-400">Via OpenClaw — no API cost</span>
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Messages — SCROLLABLE container */}
+          <div
+            ref={chatContainerRef}
+            className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3"
+            style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 220px)' }}
+          >
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -393,10 +366,11 @@ export function Agents() {
                       ? 'bg-lab-accent/10 text-lab-text-primary rounded-br-sm'
                       : 'bg-lab-elevated text-lab-text-secondary rounded-bl-sm'
                   }`}
+                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
                 >
-                  <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                  {msg.content}
                   {msg.route && (
-                    <div className="mt-1 pt-1 border-t border-white/5 text-[9px] text-lab-text-muted">
+                    <div className="mt-1 pt-1 border-t border-white/5 text-[9px] text-lab-text-muted opacity-60">
                       {msg.route}
                     </div>
                   )}
@@ -418,7 +392,8 @@ export function Agents() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t border-lab-border p-4">
+          {/* Input — fixed at bottom */}
+          <div className="flex-shrink-0 border-t border-lab-border p-4">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -432,6 +407,7 @@ export function Agents() {
                 }}
                 placeholder={`Message ${selectedAgent.name}...`}
                 className="flex-1 bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50 transition-subtle"
+                disabled={isSending}
               />
               <button
                 onClick={handleSendMessage}
@@ -445,9 +421,10 @@ export function Agents() {
         </div>
       )}
 
+      {/* Add Agent Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="card-elevated w-96">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
+          <div className="card-elevated w-96" onClick={e => e.stopPropagation()}>
             <h2 className="text-sm font-semibold text-lab-text-primary mb-4">Create New Agent</h2>
             <form onSubmit={handleAddAgent} className="space-y-4">
               <div>
@@ -460,7 +437,6 @@ export function Agents() {
                   placeholder="Agent name"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-lab-text-secondary mb-2">Role</label>
                 <input
@@ -471,7 +447,6 @@ export function Agents() {
                   placeholder="e.g. Research Agent"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-lab-text-secondary mb-2">Goal</label>
                 <textarea
@@ -482,7 +457,6 @@ export function Agents() {
                   rows={2}
                 />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-lab-text-secondary mb-2">Provider</label>
@@ -490,8 +464,8 @@ export function Agents() {
                     value={formData.provider}
                     onChange={(e) => {
                       const prov = e.target.value
-                      const defaultModel = prov === 'openai' ? 'gpt-4o' : prov === 'anthropic' ? 'claude-sonnet-4-20250514' : 'llama3'
-                      setFormData({ ...formData, provider: prov, model_name: defaultModel })
+                      const model = prov === 'openai' ? 'gpt-4o' : prov === 'anthropic' ? 'claude-sonnet-4-20250514' : 'llama3'
+                      setFormData({ ...formData, provider: prov, model_name: model })
                     }}
                     className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary focus:outline-none focus:border-lab-accent/50"
                   >
@@ -500,7 +474,6 @@ export function Agents() {
                     <option value="ollama">Ollama (Local)</option>
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-xs font-medium text-lab-text-secondary mb-2">Model</label>
                   <select
@@ -508,29 +481,12 @@ export function Agents() {
                     onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
                     className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary focus:outline-none focus:border-lab-accent/50"
                   >
-                    {formData.provider === 'openai' && (
-                      <>
-                        <option value="gpt-4o">GPT-4o</option>
-                        <option value="gpt-4o-mini">GPT-4o Mini</option>
-                      </>
-                    )}
-                    {formData.provider === 'anthropic' && (
-                      <>
-                        <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                        <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
-                      </>
-                    )}
-                    {formData.provider === 'ollama' && (
-                      <>
-                        <option value="llama3">Llama 3</option>
-                        <option value="mistral">Mistral</option>
-                        <option value="codellama">Code Llama</option>
-                      </>
-                    )}
+                    {formData.provider === 'openai' && <><option value="gpt-4o">GPT-4o</option><option value="gpt-4o-mini">GPT-4o Mini</option></>}
+                    {formData.provider === 'anthropic' && <><option value="claude-sonnet-4-20250514">Claude Sonnet 4</option><option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option></>}
+                    {formData.provider === 'ollama' && <><option value="llama3">Llama 3</option><option value="mistral">Mistral</option></>}
                   </select>
                 </div>
               </div>
-
               <div className="flex items-center gap-2 pt-4 border-t border-lab-border">
                 <button
                   type="button"
