@@ -192,3 +192,56 @@ export async function getReportStats() {
 export async function generateReport(data) {
   return api('/api/reports/generate', { method: 'POST', body: JSON.stringify(data) })
 }
+
+// Knowledge Base
+export async function getKnowledge(params = {}) {
+  const query = new URLSearchParams(params).toString()
+  return api(`/api/knowledge?${query}`)
+}
+
+export async function createKnowledge(data) {
+  return api('/api/knowledge', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateKnowledge(id, data) {
+  return api(`/api/knowledge/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function deleteKnowledge(id) {
+  return api(`/api/knowledge/${id}`, { method: 'DELETE' })
+}
+
+export async function searchKnowledge(query) {
+  return api(`/api/knowledge/search?q=${encodeURIComponent(query)}`)
+}
+
+// Agent Memories
+export async function getAgentMemories(agentId) {
+  return api(`/api/agents/${agentId}/memories`)
+}
+
+export async function searchAgentMemories(agentId, query) {
+  return api(`/api/agents/${agentId}/memories/search?q=${encodeURIComponent(query)}`)
+}
+
+export async function deleteAgentMemory(agentId, memoryId) {
+  return api(`/api/agents/${agentId}/memories/${memoryId}`, { method: 'DELETE' })
+}
+
+// Corrections
+export async function createCorrection(data) {
+  return api('/api/corrections', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getCorrections(agentId) {
+  return api(`/api/corrections/${agentId}`)
+}
+
+export async function getCorrectionRules(agentId) {
+  return api(`/api/corrections/${agentId}/rules`)
+}
+
+// Memory Stats
+export async function getMemoryStats() {
+  return api('/api/memory/stats')
+}

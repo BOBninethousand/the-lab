@@ -1,6 +1,8 @@
 import json
 import os
 import uuid
+import asyncio
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from app.config import settings
@@ -8,6 +10,8 @@ from app.models import Agent, AgentCreate, Task, TaskCreate, ChatMessage
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_community.chat_models import ChatOllama
+
+logger = logging.getLogger(__name__)
 
 
 AVATAR_COLORS = {
@@ -213,13 +217,15 @@ class AgentManager:
         if not agent:
             return "Error: Agent not found"
 
+        # Pre-compute memory context (async) before routing to sync or async path
+        memory_context = await self._get_memory_context(agent_id, message)
+
         if self._should_use_openclaw():
-            return await self._chat_via_openclaw(agent, message, task_type)
+            return await self._chat_via_openclaw(agent, message, task_type, memory_context=memory_context)
 
-        import asyncio
-        return await asyncio.to_thread(self.chat, agent_id, message, task_type)
+        return await asyncio.to_thread(self.chat, agent_id, message, task_type, memory_context=memory_context)
 
-    async def _chat_via_openclaw(self, agent: Agent, message: str, task_type: str = "chat") -> str:
+    async def _chat_via_openclaw(self, agent: Agent, message: str, task_type: str = "chat", memory_context: str = "") -> str:
         system_prompt = (
             f"You are {agent.name}, a {agent.role} working for HealthDataLab and its sister companies (Altituding, IrisLab, IrisMapper).\n\n"
             f"YOUR GOAL: {agent.goal}\n\n"
@@ -235,6 +241,10 @@ class AgentManager:
             f"- You are a specialist. Act like one. Show your expertise in every response.\n"
             f"- Answer the current user request directly now. Do not include internal reasoning, tool-use notes, or policy/process commentary."
         )
+
+        # Inject memory context (R-Awareness)
+        if memory_context:
+            system_prompt += f"\n\n{memory_context}"
 
         result = await self.openclaw_bridge.generate(
             prompt=message,
@@ -255,9 +265,13 @@ class AgentManager:
 
         self._save_chat_message(agent.id, "user", message)
         self._save_chat_message(agent.id, "assistant", response_text)
+
+        # Auto-extract memories in background
+        self._trigger_memory_extraction(agent.id, message, response_text)
+
         return response_text
 
-    def chat(self, agent_id: str, message: str, task_type: str = "chat") -> str:
+    def chat(self, agent_id: str, message: str, task_type: str = "chat", memory_context: str = "") -> str:
         agent = self.get_agent(agent_id)
         if not agent:
             return "Error: Agent not found"
@@ -266,13 +280,19 @@ class AgentManager:
             llm = self.get_llm(agent.provider, agent.model_name)
             # Build messages with system prompt for better responses
             from langchain_core.messages import SystemMessage, HumanMessage
-            system_msg = SystemMessage(content=(
+            system_content = (
                 f"You are {agent.name}, a {agent.role} working for HealthDataLab.\n"
                 f"Your goal: {agent.goal}\n"
                 f"Your background: {agent.backstory}\n\n"
                 f"Give detailed, substantive responses. Minimum 3-4 paragraphs for business questions. "
                 f"Use British English. Be professional and direct."
-            ))
+            )
+
+            # Inject memory context (R-Awareness)
+            if memory_context:
+                system_content += f"\n\n{memory_context}"
+
+            system_msg = SystemMessage(content=system_content)
             human_msg = HumanMessage(content=message)
             response = llm.invoke([system_msg, human_msg])
             response_text = response.content
@@ -308,6 +328,9 @@ class AgentManager:
             self._save_chat_message(agent_id, "user", message)
             self._save_chat_message(agent_id, "assistant", response_text)
 
+            # Auto-extract memories in background
+            self._trigger_memory_extraction(agent_id, message, response_text)
+
             return response_text
         except ValueError as e:
             return f"Configuration Error: {str(e)}"
@@ -337,6 +360,53 @@ class AgentManager:
 
         with open(chat_file, "w") as f:
             json.dump(messages, f, indent=2)
+
+    async def _get_memory_context(self, agent_id: str, message: str) -> str:
+        """Build memory context for injection into agent system prompt."""
+        if not hasattr(self, "memory_engine") or not self.memory_engine:
+            return ""
+        try:
+            from app.memory_engine import build_context
+            return await build_context(
+                agent_id,
+                message,
+                self.memory_engine["knowledge"],
+                self.memory_engine["agent_memory"],
+                self.memory_engine["corrections"],
+            )
+        except Exception as e:
+            logger.warning(f"Memory context build failed: {e}")
+            return ""
+
+    def _trigger_memory_extraction(self, agent_id: str, user_msg: str, assistant_msg: str):
+        """Trigger background memory extraction from chat exchange."""
+        if not hasattr(self, "memory_engine") or not self.memory_engine:
+            return
+        try:
+            agent_mem_mgr = self.memory_engine["agent_memory"]
+
+            async def _llm_for_extraction(prompt: str) -> str:
+                """Lightweight LLM call for memory extraction."""
+                agent = self.get_agent(agent_id)
+                if not agent:
+                    return ""
+                try:
+                    llm = self.get_llm(agent.provider, agent.model_name)
+                    from langchain_core.messages import HumanMessage
+                    response = await asyncio.to_thread(
+                        llm.invoke, [HumanMessage(content=prompt)]
+                    )
+                    return response.content
+                except Exception:
+                    return ""
+
+            asyncio.create_task(
+                agent_mem_mgr.extract_from_chat(
+                    agent_id, user_msg, assistant_msg, _llm_for_extraction
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to trigger memory extraction: {e}")
 
     def get_chat_history(self, agent_id: str) -> List[dict]:
         chat_file = f"{settings.DATA_DIR}/chats/{agent_id}.json"

@@ -143,6 +143,75 @@ class WebSocketEvent(BaseModel):
     data: dict
 
 
+# --- Memory System Models ---
+
+class KnowledgeCreate(BaseModel):
+    title: str
+    content: str
+    tags: List[str] = []
+    category: str = "fact"  # rule, fact, reference, preference
+    notion_page_id: Optional[str] = None
+
+
+class KnowledgeEntry(BaseModel):
+    id: str
+    title: str
+    content: str
+    tags: List[str]
+    category: str
+    source: str = "manual"
+    notion_page_id: Optional[str] = None
+    embedding: Optional[List[float]] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentMemoryCreate(BaseModel):
+    content: str
+    memory_type: str = "insight"  # insight, learning, preference, fact
+    tags: List[str] = []
+
+
+class AgentMemoryEntry(BaseModel):
+    id: str
+    agent_id: str
+    content: str
+    memory_type: str
+    tags: List[str] = []
+    embedding: Optional[List[float]] = None
+    source_chat_id: Optional[str] = None
+    created_at: datetime
+
+
+class CorrectionCreate(BaseModel):
+    agent_id: str
+    original_response: str
+    correction: str
+    tags: List[str] = []
+
+
+class CorrectionEntry(BaseModel):
+    id: str
+    agent_id: str
+    original_response: str
+    correction: str
+    rule_created: bool = False
+    occurrence_count: int = 1
+    embedding: Optional[List[float]] = None
+    tags: List[str] = []
+    created_at: datetime
+
+
+class MemoryStats(BaseModel):
+    knowledge_count: int
+    agent_memory_count: int
+    correction_count: int
+    rules_count: int
+    agents_with_memory: List[str]
+
+
+# --- Report Models ---
+
 class ReportCreate(BaseModel):
     title: str
     content: str

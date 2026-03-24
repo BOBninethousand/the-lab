@@ -20,6 +20,8 @@ class Settings:
     SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0")
     SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8000"))
     DATA_DIR: str = os.getenv("DATA_DIR", "./data")
+    NOTION_API_KEY: str = os.getenv("NOTION_API_KEY", "")
+    NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
 
 
 settings = Settings()

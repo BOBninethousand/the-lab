@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, Trash2, Plus, FileText, Clock, Zap, Bot, Wifi } from 'lucide-react'
 import { AvatarCircle } from '../components/AvatarCircle'
-import { getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats } from '../lib/api'
+import { getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats, createCorrection } from '../lib/api'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -15,8 +15,26 @@ export function Agents() {
   const [isSending, setIsSending] = useState(false)
   const [agentStats, setAgentStats] = useState({})
   const [settings, setSettings] = useState({})
+  const [correctionMsg, setCorrectionMsg] = useState(null)
+  const [correctionText, setCorrectionText] = useState('')
   const messagesEndRef = useRef(null)
   const chatContainerRef = useRef(null)
+
+  const handleCorrection = async () => {
+    if (!correctionText.trim() || !correctionMsg || !selectedAgent) return
+    try {
+      await createCorrection({
+        agent_id: selectedAgent.id,
+        original_response: correctionMsg.content.slice(0, 500),
+        correction: correctionText,
+        tags: [],
+      })
+      setCorrectionMsg(null)
+      setCorrectionText('')
+    } catch (err) {
+      console.error('Failed to log correction:', err)
+    }
+  }
 
   const [formData, setFormData] = useState({
     name: '',
@@ -393,6 +411,35 @@ export function Agents() {
                   {msg.route && (
                     <div className="mt-1 pt-1 border-t border-white/5 text-[9px] text-lab-text-muted opacity-60">
                       {msg.route}
+                    </div>
+                  )}
+                  {msg.role === 'assistant' && msg.id !== 'welcome' && (
+                    <div className="mt-1.5 pt-1 border-t border-white/5 flex justify-end">
+                      {correctionMsg?.id === msg.id ? (
+                        <div className="w-full mt-1 space-y-2">
+                          <textarea
+                            value={correctionText}
+                            onChange={e => setCorrectionText(e.target.value)}
+                            placeholder="What should the response have been?"
+                            className="w-full bg-lab-bg border border-lab-border rounded px-2 py-1.5 text-[10px] text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50 resize-none"
+                            rows={2}
+                            autoFocus
+                          />
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={() => { setCorrectionMsg(null); setCorrectionText('') }}
+                              className="px-2 py-0.5 text-[10px] text-lab-text-muted hover:text-lab-text-secondary transition-subtle">Cancel</button>
+                            <button onClick={handleCorrection}
+                              className="px-2 py-0.5 text-[10px] bg-amber-500/20 text-amber-400 rounded hover:bg-amber-500/30 transition-subtle">Submit</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setCorrectionMsg(msg); setCorrectionText('') }}
+                          className="text-[9px] text-lab-text-muted hover:text-amber-400 transition-subtle opacity-50 hover:opacity-100"
+                        >
+                          Correct
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

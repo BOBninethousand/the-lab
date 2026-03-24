@@ -18,6 +18,8 @@ from app.models import (
     ScheduledJobCreate,
     ChatRequest,
     ReportCreate,
+    KnowledgeCreate,
+    CorrectionCreate,
 )
 from app.websocket_manager import ws_manager
 from app.agents import AgentManager
@@ -27,6 +29,14 @@ from app.scheduler import SchedulerManager
 from app.crew_manager import CrewManager
 from app.cost_tracker import CostTracker
 from app.openclaw_bridge import OpenClawBridge
+from app.embeddings import EmbeddingManager
+from app.memory_engine import (
+    KnowledgeBaseManager,
+    AgentMemoryManager,
+    CorrectionManager,
+    build_context,
+    get_memory_stats,
+)
 
 # Initialize managers
 agent_manager = AgentManager()
@@ -40,6 +50,20 @@ crew_manager = CrewManager(agent_manager, ws_manager)
 openclaw_bridge = OpenClawBridge(ws_manager=ws_manager, cost_tracker=cost_tracker)
 agent_manager.openclaw_bridge = openclaw_bridge
 
+# Memory system managers
+embedding_manager = EmbeddingManager()
+knowledge_manager = KnowledgeBaseManager(embedding_manager)
+agent_memory_manager = AgentMemoryManager(embedding_manager)
+correction_manager = CorrectionManager(embedding_manager, knowledge_manager)
+
+# Wire memory engine into agent manager for context injection
+agent_manager.memory_engine = {
+    "knowledge": knowledge_manager,
+    "agent_memory": agent_memory_manager,
+    "corrections": correction_manager,
+    "build_context": build_context,
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,6 +74,9 @@ async def lifespan(app: FastAPI):
     os.makedirs(f"{settings.DATA_DIR}/crew_logs", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/chats", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/reports", exist_ok=True)
+    os.makedirs(f"{settings.DATA_DIR}/knowledge", exist_ok=True)
+    os.makedirs(f"{settings.DATA_DIR}/agent_memory", exist_ok=True)
+    os.makedirs(f"{settings.DATA_DIR}/corrections", exist_ok=True)
     scheduler_manager.start()
     # Try connecting to OpenClaw Gateway (non-blocking — OK if not running)
     asyncio.create_task(openclaw_bridge.connect())
@@ -264,6 +291,99 @@ async def get_journal(date: str):
 async def create_journal(data: JournalCreate):
     entry = memory_manager.create_journal(data)
     return entry.model_dump(mode="json")
+
+
+# --- KNOWLEDGE BASE ENDPOINTS ---
+@app.get("/api/knowledge/search")
+async def search_knowledge(q: str = ""):
+    if not q:
+        return []
+    results = await knowledge_manager.search_semantic(q, top_k=10)
+    return [r.model_dump(mode="json") for r in results]
+
+
+@app.get("/api/knowledge")
+async def list_knowledge(category: str = None, tag: str = None, search: str = None):
+    entries = knowledge_manager.get_all(category, tag, search)
+    return [e.model_dump(mode="json") for e in entries]
+
+
+@app.post("/api/knowledge")
+async def create_knowledge(data: KnowledgeCreate):
+    entry = await knowledge_manager.add(data)
+    await ws_manager.broadcast("knowledge_added", entry.model_dump(mode="json"))
+    return entry.model_dump(mode="json")
+
+
+@app.get("/api/knowledge/{entry_id}")
+async def get_knowledge(entry_id: str):
+    entry = knowledge_manager.get(entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Knowledge entry not found")
+    return entry.model_dump(mode="json")
+
+
+@app.put("/api/knowledge/{entry_id}")
+async def update_knowledge(entry_id: str, data: dict):
+    entry = await knowledge_manager.update(entry_id, data)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Knowledge entry not found")
+    return entry.model_dump(mode="json")
+
+
+@app.delete("/api/knowledge/{entry_id}")
+async def delete_knowledge(entry_id: str):
+    if not knowledge_manager.delete(entry_id):
+        raise HTTPException(status_code=404, detail="Knowledge entry not found")
+    return {"status": "deleted"}
+
+
+# --- AGENT MEMORY ENDPOINTS ---
+@app.get("/api/agents/{agent_id}/memories/search")
+async def search_agent_memories(agent_id: str, q: str = ""):
+    if not q:
+        return []
+    results = await agent_memory_manager.search_for_agent(agent_id, q, top_k=10)
+    return [r.model_dump(mode="json") for r in results]
+
+
+@app.get("/api/agents/{agent_id}/memories")
+async def list_agent_memories(agent_id: str):
+    entries = agent_memory_manager.get_for_agent(agent_id)
+    return [e.model_dump(mode="json") for e in entries]
+
+
+@app.delete("/api/agents/{agent_id}/memories/{memory_id}")
+async def delete_agent_memory(agent_id: str, memory_id: str):
+    if not agent_memory_manager.delete(agent_id, memory_id):
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"status": "deleted"}
+
+
+# --- CORRECTION ENDPOINTS ---
+@app.post("/api/corrections")
+async def create_correction(data: CorrectionCreate):
+    entry = await correction_manager.add(data)
+    await ws_manager.broadcast("correction_added", entry.model_dump(mode="json"))
+    return entry.model_dump(mode="json")
+
+
+@app.get("/api/corrections/{agent_id}")
+async def list_corrections(agent_id: str):
+    entries = correction_manager.get_for_agent(agent_id)
+    return [e.model_dump(mode="json") for e in entries]
+
+
+@app.get("/api/corrections/{agent_id}/rules")
+async def list_correction_rules(agent_id: str):
+    rules = correction_manager.get_rules(agent_id)
+    return [r.model_dump(mode="json") for r in rules]
+
+
+# --- MEMORY STATS ENDPOINT ---
+@app.get("/api/memory/stats")
+async def memory_stats():
+    return get_memory_stats(knowledge_manager, agent_memory_manager, correction_manager).model_dump(mode="json")
 
 
 # --- DOCUMENT ENDPOINTS ---
