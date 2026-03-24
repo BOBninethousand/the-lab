@@ -1,19 +1,15 @@
 import { AvatarCircle } from './AvatarCircle'
 
 export function AgentRow({ agent, onClick }) {
-  const statusText = agent.status || 'Idle'
-  const isWorking = statusText === 'working'
-  const statusColor =
-    statusText === 'working'
-      ? 'text-lab-success'
-      : 'text-lab-text-muted'
+  const isWorking = agent.status === 'working'
+  const isError = agent.status === 'error'
 
   return (
     <button
       onClick={onClick}
       className="w-full flex items-center gap-3 px-3 py-3 border-b border-white/[0.04] hover:bg-white/[0.02] transition-subtle text-left"
     >
-      <AvatarCircle name={agent.name} agent={agent.agent_type} size={28} />
+      <AvatarCircle name={agent.name} agent={agent.name} size={28} />
 
       <div className="flex-1">
         <div className="flex items-center gap-2">
@@ -31,8 +27,17 @@ export function AgentRow({ agent, onClick }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <span className={`text-xs ${statusColor}`}>{statusText}</span>
-        <span className="text-xs text-lab-text-faint ml-2">{agent.provider}</span>
+        {isWorking ? (
+          <span className="flex items-center gap-1 text-xs text-blue-400">
+            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" /> Working
+          </span>
+        ) : isError ? (
+          <span className="text-xs text-lab-error">Error</span>
+        ) : (
+          <span className="flex items-center gap-1 text-xs text-emerald-400">
+            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> Online
+          </span>
+        )}
       </div>
     </button>
   )
