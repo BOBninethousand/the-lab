@@ -24,7 +24,7 @@ DEFAULT_AGENTS = [
         "goal": "Research competitors, market trends, potential customers, and growth opportunities for HealthDataLab, Altituding, and IrisMapper.",
         "backstory": "Scout is a seasoned market research analyst with deep expertise in identifying market opportunities and competitor intelligence.",
         "provider": "openai",
-        "model_name": "gpt-4o",
+        "model_name": "gpt-5.4",
         "avatar_color": "#3b6fcc",
     },
     {
@@ -32,8 +32,8 @@ DEFAULT_AGENTS = [
         "role": "Content Strategist & Writer",
         "goal": "Create compelling blog posts, social media content, email sequences, and SEO content that drives traffic and conversions.",
         "backstory": "Quill is a world-class content strategist and writer with years of experience creating viral content and driving engagement.",
-        "provider": "anthropic",
-        "model_name": "claude-sonnet-4-20250514",
+        "provider": "openai",
+        "model_name": "gpt-5.4",
         "avatar_color": "#c4682d",
     },
     {
@@ -41,8 +41,8 @@ DEFAULT_AGENTS = [
         "role": "Senior Full-Stack Developer",
         "goal": "Build features, fix bugs, create prototypes, and ship code for our websites.",
         "backstory": "Forge is a senior full-stack developer with expertise in building scalable applications and shipping fast.",
-        "provider": "anthropic",
-        "model_name": "claude-sonnet-4-20250514",
+        "provider": "openai",
+        "model_name": "gpt-5.4",
         "avatar_color": "#7c5bbf",
     },
     {
@@ -51,7 +51,7 @@ DEFAULT_AGENTS = [
         "goal": "Find potential leads, draft outreach messages, identify partnership opportunities, and track sales pipeline.",
         "backstory": "Radar is a world-class business development representative with a proven track record of closing deals and building relationships.",
         "provider": "openai",
-        "model_name": "gpt-4o",
+        "model_name": "gpt-5.4",
         "avatar_color": "#1d8fa0",
     },
 ]
@@ -191,7 +191,7 @@ class AgentManager:
                 raise ValueError(
                     "OPENAI_API_KEY not set. Please configure your API key in .env"
                 )
-            return ChatOpenAI(model=model_name, api_key=settings.OPENAI_API_KEY)
+            return ChatOpenAI(model=model_name, api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
         elif provider == "anthropic":
             if not settings.ANTHROPIC_API_KEY:
                 raise ValueError(
