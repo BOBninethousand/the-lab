@@ -3,7 +3,7 @@ import { StatCard } from '../components/StatCard'
 import { AgentRow } from '../components/AgentRow'
 import { ActivityList } from '../components/ActivityList'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { getAgents, getSchedule, getCrews, getCostToday, getTasks, getReports, getReportStats } from '../lib/api'
+import { getAgents, getSchedule, getCrews, getTasks, getReports, getReportStats } from '../lib/api'
 import { formatDistanceToNow } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { Link, useNavigate } from 'react-router-dom'
@@ -62,7 +62,6 @@ export function Dashboard() {
   const [schedule, setSchedule] = useState([])
   const [crews, setCrews] = useState([])
   const [tasks, setTasks] = useState([])
-  const [costToday, setCostToday] = useState(null)
   const [latestReports, setLatestReports] = useState([])
   const [reportStats, setReportStats] = useState(null)
   const [activity, setActivity] = useState([])
@@ -74,12 +73,11 @@ export function Dashboard() {
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const [agentsData, scheduleData, crewsData, tasksData, costData, reportsData, rStatsData] = await Promise.all([
+        const [agentsData, scheduleData, crewsData, tasksData, reportsData, rStatsData] = await Promise.all([
           getAgents().catch(() => []),
           getSchedule().catch(() => []),
           getCrews().catch(() => []),
           getTasks().catch(() => []),
-          getCostToday().catch(() => null),
           getReports({ limit: 4 }).catch(() => []),
           getReportStats().catch(() => null),
         ])
@@ -88,7 +86,6 @@ export function Dashboard() {
         setSchedule(Array.isArray(scheduleData) ? scheduleData : (scheduleData.schedule || []))
         setCrews(Array.isArray(crewsData) ? crewsData : (crewsData.crews || []))
         setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks || []))
-        if (costData) setCostToday(costData)
         setLatestReports(Array.isArray(reportsData) ? reportsData : [])
         if (rStatsData) setReportStats(rStatsData)
       } catch (err) {
@@ -109,45 +106,17 @@ export function Dashboard() {
   }, [events])
 
   const onlineAgents = agents.length
-  const budgetUsed = costToday
-    ? ((costToday.spend_usd / Math.max(costToday.budget_usd, 0.01)) * 100).toFixed(0)
-    : 0
 
   const TYPE_LABELS = { briefing: 'Briefing', content: 'Content', tech_report: 'Tech Report', outreach: 'Outreach', weekly_review: 'Weekly Review', content_calendar: 'Calendar' }
 
   return (
     <div className="space-y-8">
       {/* Stats */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <StatCard label="Agents Online" value={`${onlineAgents}/${onlineAgents}`} isLoading={isLoading} />
         <StatCard label="Total Reports" value={reportStats?.total ?? 0} isLoading={isLoading} />
         <StatCard label="Reports Today" value={reportStats?.today ?? 0} isLoading={isLoading} />
         <StatCard label="Unread" value={reportStats?.unread ?? 0} isLoading={isLoading} />
-        <div className="card">
-          {isLoading ? (
-            <div className="h-12 bg-lab-surface rounded animate-pulse" />
-          ) : (
-            <>
-              <div className="text-xs text-lab-text-muted mb-1">Today's Spend</div>
-              <div className="flex items-baseline gap-2">
-                <span className={`text-stat text-xl ${costToday?.over_budget ? 'text-lab-error' : ''}`}>
-                  ${costToday?.spend_usd?.toFixed(2) || '0.00'}
-                </span>
-                <span className="text-xs text-lab-text-faint">
-                  / ${costToday?.budget_usd?.toFixed(2) || '5.00'}
-                </span>
-              </div>
-              <div className="mt-2 w-full h-1 bg-white/[0.05] rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    costToday?.over_budget ? 'bg-lab-error' : 'bg-lab-success'
-                  }`}
-                  style={{ width: `${Math.min(100, budgetUsed)}%` }}
-                />
-              </div>
-            </>
-          )}
-        </div>
       </div>
 
       {/* Latest Reports */}

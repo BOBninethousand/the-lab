@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Shield, DollarSign, Server, Key, CheckCircle, AlertCircle } from 'lucide-react'
-import { getSettings, updateBudget } from '../lib/api'
+import { Server, Key, CheckCircle, AlertCircle } from 'lucide-react'
+import { getSettings } from '../lib/api'
 
 export function Settings() {
   const [settings, setSettings] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [budgetInput, setBudgetInput] = useState('')
-  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     loadSettings()
@@ -18,26 +16,11 @@ export function Settings() {
       const data = await getSettings().catch(() => null)
       if (data) {
         setSettings(data)
-        setBudgetInput(String(data.daily_budget_usd || 5))
       }
     } catch (err) {
       console.error('Failed to load settings:', err)
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const handleSaveBudget = async () => {
-    const val = parseFloat(budgetInput)
-    if (isNaN(val) || val < 0) return
-
-    try {
-      await updateBudget(val)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-      loadSettings()
-    } catch (err) {
-      console.error('Failed to update budget:', err)
     }
   }
 
@@ -123,44 +106,6 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Budget Control */}
-      <div>
-        <h2 className="text-section-label mb-4">Budget Control</h2>
-        <div className="border border-lab-border rounded-lg p-5">
-          <div className="flex items-start gap-4">
-            <DollarSign size={16} className="text-lab-text-muted flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-lab-text-primary mb-1">
-                Daily API Spending Limit
-              </p>
-              <p className="text-xs text-lab-text-muted mb-4">
-                The Lab will warn when daily API spend exceeds this amount. Helps prevent runaway costs when agents are working.
-              </p>
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <span className="absolute left-3 top-2 text-xs text-lab-text-muted">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.50"
-                    value={budgetInput}
-                    onChange={(e) => setBudgetInput(e.target.value)}
-                    className="w-32 bg-lab-bg border border-lab-border rounded-md pl-7 pr-3 py-2 text-xs text-lab-text-primary focus:outline-none focus:border-lab-accent/50 transition-subtle"
-                  />
-                </div>
-                <span className="text-xs text-lab-text-muted">USD / day</span>
-                <button
-                  onClick={handleSaveBudget}
-                  className="px-4 py-2 bg-lab-accent text-white rounded-md text-xs font-medium hover:bg-lab-accent/90 transition-subtle"
-                >
-                  {saved ? 'Saved!' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Server Info */}
       <div>
         <h2 className="text-section-label mb-4">Server</h2>
@@ -186,9 +131,6 @@ export function Settings() {
 {`# Edit backend/.env and add your keys:
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: set daily budget (default $5)
-DAILY_API_BUDGET=5.00
 
 # Optional: Ollama for free local models
 OLLAMA_BASE_URL=http://localhost:11434

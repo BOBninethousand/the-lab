@@ -9,7 +9,7 @@ import {
   FileText,
   GitBranch,
   FlaskConical,
-  DollarSign,
+  Zap,
   Plug,
   Settings
 } from 'lucide-react'
@@ -23,7 +23,7 @@ const navItems = [
   { label: 'Memory', icon: Brain, path: '/memory' },
   { label: 'Documents', icon: FileText, path: '/documents' },
   { label: 'Teams', icon: GitBranch, path: '/teams' },
-  { label: 'Costs', icon: DollarSign, path: '/costs' },
+  { label: 'Usage', icon: Zap, path: '/costs' },
   { label: 'OpenClaw', icon: Plug, path: '/openclaw' },
 ]
 
@@ -39,7 +39,7 @@ const pageNames = {
   '/memory': 'Memory',
   '/documents': 'Documents',
   '/teams': 'Teams',
-  '/costs': 'Costs',
+  '/costs': 'Usage',
   '/openclaw': 'OpenClaw',
   '/settings': 'Settings',
 }
