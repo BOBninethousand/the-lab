@@ -174,6 +174,12 @@ class AgentManager:
     def get_agent(self, agent_id: str) -> Optional[Agent]:
         return self.agents.get(agent_id)
 
+    def get_agent_by_name(self, name: str) -> Optional[Agent]:
+        for agent in self.agents.values():
+            if agent.name.lower() == name.lower():
+                return agent
+        return None
+
     def delete_agent(self, agent_id: str):
         if agent_id in self.agents:
             del self.agents[agent_id]

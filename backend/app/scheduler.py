@@ -129,6 +129,9 @@ class SchedulerManager:
         job_dict = job.model_dump(mode="json")
         job_dict["last_run"] = None
         job_dict["next_run"] = None
+        # Store agent name for fallback lookup if agent_id becomes stale
+        agent = self.agent_manager.get_agent(data.agent_id)
+        job_dict["agent_name"] = agent.name if agent else None
 
         self.jobs[job_id] = job_dict
         self._save_jobs()
@@ -312,6 +315,39 @@ class SchedulerManager:
 
         return execution
 
+    def _broadcast_sync(self, event_type: str, data: dict):
+        """Broadcast WebSocket event from a sync context (thread pool)."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(
+                    asyncio.ensure_future,
+                    self.ws_manager.broadcast(event_type, data),
+                )
+            else:
+                asyncio.run(self.ws_manager.broadcast(event_type, data))
+        except RuntimeError:
+            pass  # No event loop available — skip broadcast
+
+    def _resolve_agent(self, agent_id: str, job_config: dict):
+        """Resolve agent by ID, falling back to name-based lookup."""
+        agent = self.agent_manager.get_agent(agent_id)
+        if agent:
+            return agent
+
+        # Fallback: try by stored agent_name
+        agent_name = job_config.get("agent_name")
+        if agent_name:
+            agent = self.agent_manager.get_agent_by_name(agent_name)
+            if agent:
+                # Update stored agent_id to current one
+                job_config["agent_id"] = agent.id
+                self._save_jobs()
+                return agent
+
+        return None
+
     def run_job_now(self, job_id: str):
         if job_id not in self.jobs:
             return {"error": "Job not found"}
@@ -320,10 +356,33 @@ class SchedulerManager:
         agent_id = job_config["agent_id"]
         prompt = job_config["prompt"]
 
+        # Resolve agent with fallback to name-based lookup
+        agent = self._resolve_agent(agent_id, job_config)
+        if not agent:
+            execution = JobExecution(
+                id=str(uuid.uuid4()),
+                job_id=job_id,
+                job_name=job_config["name"],
+                agent_id=agent_id,
+                agent_name="Unknown",
+                executed_at=datetime.now(),
+                status="failed",
+                result_preview="",
+                error=f"Agent not found (id: {agent_id}). Delete and recreate this job.",
+            )
+            self._save_execution(execution)
+            return {"job_id": job_id, "status": "failed", "error": execution.error}
+
+        # Use resolved agent's current ID
+        agent_id = agent.id
+
         try:
             response = self.agent_manager.chat(agent_id, prompt)
 
-            agent = self.agent_manager.get_agent(agent_id)
+            # Check for error responses returned as strings
+            if response.startswith("Error:") or response.startswith("Configuration Error:"):
+                raise RuntimeError(response)
+
             from app.models import DocumentCreate
             doc = self.document_manager.create_document(
                 DocumentCreate(
@@ -334,13 +393,12 @@ class SchedulerManager:
                 )
             )
 
-            # Save execution record
             execution = JobExecution(
                 id=str(uuid.uuid4()),
                 job_id=job_id,
                 job_name=job_config["name"],
                 agent_id=agent_id,
-                agent_name=agent.name if agent else "Unknown",
+                agent_name=agent.name,
                 executed_at=datetime.now(),
                 status="success",
                 result_preview=response[:300],
@@ -351,20 +409,14 @@ class SchedulerManager:
             job_config["last_run"] = datetime.now().isoformat()
             self._save_jobs()
 
-            import asyncio
-            asyncio.create_task(
-                self.ws_manager.broadcast(
-                    "job_completed",
-                    {
-                        "job_id": job_id,
-                        "job_name": job_config["name"],
-                        "agent_name": agent.name if agent else "Unknown",
-                        "result": response[:200],
-                        "execution_id": execution.id,
-                        "status": "success",
-                    },
-                )
-            )
+            self._broadcast_sync("job_completed", {
+                "job_id": job_id,
+                "job_name": job_config["name"],
+                "agent_name": agent.name,
+                "result": response[:200],
+                "execution_id": execution.id,
+                "status": "success",
+            })
 
             return {
                 "job_id": job_id,
@@ -373,14 +425,12 @@ class SchedulerManager:
                 "execution_id": execution.id,
             }
         except Exception as e:
-            # Save failed execution
-            agent = self.agent_manager.get_agent(agent_id)
             execution = JobExecution(
                 id=str(uuid.uuid4()),
                 job_id=job_id,
                 job_name=job_config["name"],
                 agent_id=agent_id,
-                agent_name=agent.name if agent else "Unknown",
+                agent_name=agent.name,
                 executed_at=datetime.now(),
                 status="failed",
                 result_preview="",
