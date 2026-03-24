@@ -17,11 +17,12 @@ from app.models import (
     DocumentCreate,
     ScheduledJobCreate,
     ChatRequest,
+    ReportCreate,
 )
 from app.websocket_manager import ws_manager
 from app.agents import AgentManager
 from app.memory import MemoryManager
-from app.documents import DocumentManager
+from app.documents import DocumentManager, ReportManager
 from app.scheduler import SchedulerManager
 from app.crew_manager import CrewManager
 from app.cost_tracker import CostTracker
@@ -33,6 +34,7 @@ cost_tracker = CostTracker()
 agent_manager.cost_tracker = cost_tracker
 memory_manager = MemoryManager()
 document_manager = DocumentManager()
+report_manager = ReportManager()
 scheduler_manager = SchedulerManager(agent_manager, document_manager, ws_manager)
 crew_manager = CrewManager(agent_manager, ws_manager)
 openclaw_bridge = OpenClawBridge(ws_manager=ws_manager, cost_tracker=cost_tracker)
@@ -47,6 +49,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(f"{settings.DATA_DIR}/documents", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/crew_logs", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/chats", exist_ok=True)
+    os.makedirs(f"{settings.DATA_DIR}/reports", exist_ok=True)
     scheduler_manager.start()
     # Try connecting to OpenClaw Gateway (non-blocking — OK if not running)
     asyncio.create_task(openclaw_bridge.connect())
@@ -283,6 +286,109 @@ async def get_document(doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc.model_dump(mode="json")
+
+
+# --- REPORT ENDPOINTS ---
+@app.get("/api/reports/stats")
+async def report_stats():
+    return report_manager.get_stats()
+
+
+@app.get("/api/reports")
+async def list_reports(
+    agent_name: str = None,
+    report_type: str = None,
+    starred: bool = None,
+    search: str = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    reports = report_manager.list_reports(
+        agent_name=agent_name,
+        report_type=report_type,
+        starred=starred,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+    return [r.model_dump(mode="json") for r in reports]
+
+
+@app.post("/api/reports")
+async def create_report(data: ReportCreate):
+    report = report_manager.create_report(data)
+    await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+    return report.model_dump(mode="json")
+
+
+@app.post("/api/reports/generate")
+async def generate_report(data: dict):
+    agent_id = data.get("agent_id")
+    title = data.get("title", "Untitled Report")
+    report_type = data.get("report_type", "briefing")
+    prompt = data.get("prompt", "")
+
+    agent = agent_manager.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Update agent status
+    agent_manager.update_status(agent_id, "working", f"Generating report: {title}")
+    await ws_manager.broadcast(
+        "agent_status",
+        {**agent.model_dump(mode="json"), "status": "working", "current_task": f"Generating report: {title}"},
+    )
+
+    try:
+        response = await agent_manager.chat_async(agent_id, prompt, task_type="report")
+
+        agent_manager.update_status(agent_id, "idle", None)
+        await ws_manager.broadcast(
+            "agent_status",
+            {**agent.model_dump(mode="json"), "status": "idle", "current_task": None},
+        )
+
+        report_data = ReportCreate(
+            title=title,
+            content=response,
+            report_type=report_type,
+            agent_id=agent_id,
+            agent_name=agent.name,
+            source="scheduled",
+        )
+        report = report_manager.create_report(report_data)
+        await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+        return report.model_dump(mode="json")
+    except Exception as e:
+        agent_manager.update_status(agent_id, "error", str(e))
+        await ws_manager.broadcast(
+            "agent_status",
+            {**agent.model_dump(mode="json"), "status": "error", "current_task": str(e)},
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/reports/{report_id}")
+async def get_report(report_id: str):
+    report = report_manager.get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report.model_dump(mode="json")
+
+
+@app.patch("/api/reports/{report_id}")
+async def update_report(report_id: str, data: dict):
+    report = report_manager.update_report(report_id, data)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report.model_dump(mode="json")
+
+
+@app.delete("/api/reports/{report_id}")
+async def delete_report(report_id: str):
+    if not report_manager.delete_report(report_id):
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"status": "deleted"}
 
 
 # --- SCHEDULE ENDPOINTS ---

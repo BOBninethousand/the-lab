@@ -141,3 +141,26 @@ class ChatRequest(BaseModel):
 class WebSocketEvent(BaseModel):
     type: str
     data: dict
+
+
+class ReportCreate(BaseModel):
+    title: str
+    content: str
+    report_type: str  # briefing, content, tech_report, outreach, weekly_review, content_calendar
+    agent_id: str
+    agent_name: str  # Scout, Quill, Forge, Radar
+    source: str = "scheduled"  # scheduled, manual, n8n
+    starred: bool = False
+
+
+class Report(BaseModel):
+    id: str
+    title: str
+    content: str
+    report_type: str
+    agent_id: str
+    agent_name: str
+    source: str
+    starred: bool = False
+    read: bool = False
+    created_at: datetime

@@ -162,3 +162,33 @@ export async function updateBudget(dailyBudget) {
     body: JSON.stringify({ daily_budget_usd: dailyBudget })
   })
 }
+
+// Reports
+export async function getReports(params = {}) {
+  const query = new URLSearchParams(params).toString()
+  return api(`/api/reports?${query}`)
+}
+
+export async function getReport(id) {
+  return api(`/api/reports/${id}`)
+}
+
+export async function createReport(data) {
+  return api('/api/reports', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateReport(id, data) {
+  return api(`/api/reports/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteReport(id) {
+  return api(`/api/reports/${id}`, { method: 'DELETE' })
+}
+
+export async function getReportStats() {
+  return api('/api/reports/stats')
+}
+
+export async function generateReport(data) {
+  return api('/api/reports/generate', { method: 'POST', body: JSON.stringify(data) })
+}

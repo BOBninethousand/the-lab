@@ -1,226 +1,508 @@
-import { useState, useEffect } from 'react'
-import { Plus, FileText } from 'lucide-react'
-import { getDocuments, createDocument } from '../lib/api'
-import { formatDate } from '../lib/time'
+import { useState, useEffect, useCallback } from 'react'
+import { Search, Star, FileText, Copy, Trash2, X, ChevronDown, Circle } from 'lucide-react'
+import { getReports, getReportStats, updateReport, deleteReport } from '../lib/api'
+import { formatDistanceToNow } from '../lib/time'
+import { AvatarCircle } from '../components/AvatarCircle'
+import { useWebSocket } from '../hooks/useWebSocket'
+import { useSearchParams } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
+const AGENTS = [
+  { name: 'All', color: null },
+  { name: 'Scout', color: '#3b6fcc' },
+  { name: 'Quill', color: '#c4682d' },
+  { name: 'Forge', color: '#7c5bbf' },
+  { name: 'Radar', color: '#1d8fa0' },
+]
+
+const AGENT_COLORS = {
+  Scout: '#3b6fcc',
+  Quill: '#c4682d',
+  Forge: '#7c5bbf',
+  Radar: '#1d8fa0',
+}
+
+const REPORT_TYPES = [
+  { value: null, label: 'All Reports' },
+  { value: 'briefing', label: 'Briefings' },
+  { value: 'content', label: 'Content Pieces' },
+  { value: 'tech_report', label: 'Tech Reports' },
+  { value: 'outreach', label: 'Outreach Packages' },
+  { value: 'weekly_review', label: 'Weekly Reviews' },
+  { value: 'content_calendar', label: 'Content Calendar' },
+]
+
+const TYPE_LABELS = {
+  briefing: 'Briefing',
+  content: 'Content',
+  tech_report: 'Tech Report',
+  outreach: 'Outreach',
+  weekly_review: 'Weekly Review',
+  content_calendar: 'Calendar',
+}
+
+function formatFullDate(date) {
+  return new Date(date).toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 export function Documents() {
-  const [documents, setDocuments] = useState([])
+  const [reports, setReports] = useState([])
+  const [stats, setStats] = useState({ total: 0, unread: 0, today: 0, by_agent: {}, by_type: {} })
   const [isLoading, setIsLoading] = useState(true)
-  const [expandedId, setExpandedId] = useState(null)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    type: 'markdown',
-  })
+  const [selectedReport, setSelectedReport] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [agentFilter, setAgentFilter] = useState(null)
+  const [typeFilter, setTypeFilter] = useState(null)
+  const [starredFilter, setStarredFilter] = useState(false)
+  const [unreadFilter, setUnreadFilter] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [toast, setToast] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [mobileViewerOpen, setMobileViewerOpen] = useState(false)
+  const { events } = useWebSocket()
+  const [searchParams] = useSearchParams()
 
-  useEffect(() => {
-    loadDocuments()
-  }, [])
+  const LIMIT = 50
 
-  const loadDocuments = async () => {
-    setIsLoading(true)
+  const loadReports = useCallback(async (reset = true) => {
+    if (reset) setIsLoading(true)
     try {
-      const data = await getDocuments().catch(() => [])
-      setDocuments(Array.isArray(data) ? data : (data.documents || []))
+      const params = { limit: LIMIT, offset: reset ? 0 : offset }
+      if (agentFilter) params.agent_name = agentFilter
+      if (typeFilter) params.report_type = typeFilter
+      if (starredFilter) params.starred = true
+      if (searchQuery) params.search = searchQuery
+
+      const [data, statsData] = await Promise.all([
+        getReports(params).catch(() => []),
+        getReportStats().catch(() => stats),
+      ])
+
+      const reportList = Array.isArray(data) ? data : []
+      if (reset) {
+        setReports(reportList)
+        setOffset(LIMIT)
+      } else {
+        setReports(prev => [...prev, ...reportList])
+        setOffset(prev => prev + LIMIT)
+      }
+      setHasMore(reportList.length === LIMIT)
+      setStats(statsData)
     } catch (err) {
-      console.error('Failed to load documents:', err)
+      console.error('Failed to load reports:', err)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [agentFilter, typeFilter, starredFilter, searchQuery, offset, stats])
 
-  const handleAddDocument = async (e) => {
-    e.preventDefault()
-    if (!formData.title || !formData.content) return
+  useEffect(() => {
+    loadReports(true)
+  }, [agentFilter, typeFilter, starredFilter, searchQuery])
 
-    try {
-      await createDocument({
-        title: formData.title,
-        content: formData.content,
-        doc_type: formData.type,
-      })
-      setFormData({ title: '', content: '', type: 'markdown' })
-      setShowAddModal(false)
-      loadDocuments()
-    } catch (err) {
-      console.error('Failed to create document:', err)
+  // Open report from URL param (e.g. navigated from Dashboard)
+  useEffect(() => {
+    const reportId = searchParams.get('report')
+    if (reportId && reports.length > 0) {
+      const found = reports.find(r => r.id === reportId)
+      if (found) handleSelectReport(found)
+    }
+  }, [searchParams, reports])
+
+  // WebSocket: listen for new reports
+  useEffect(() => {
+    if (events.length > 0) {
+      const latest = events[0]
+      if (latest.type === 'report_created' && latest.data) {
+        setReports(prev => {
+          if (prev.some(r => r.id === latest.data.id)) return prev
+          return [latest.data, ...prev]
+        })
+        setStats(prev => ({
+          ...prev,
+          total: prev.total + 1,
+          unread: prev.unread + 1,
+          today: prev.today + 1,
+        }))
+        setToast(`New report from ${latest.data.agent_name}`)
+        setTimeout(() => setToast(null), 4000)
+      }
+    }
+  }, [events])
+
+  const handleSelectReport = async (report) => {
+    setSelectedReport(report)
+    setMobileViewerOpen(true)
+    if (!report.read) {
+      try {
+        await updateReport(report.id, { read: true })
+        setReports(prev => prev.map(r => r.id === report.id ? { ...r, read: true } : r))
+        setStats(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1) }))
+      } catch {}
     }
   }
 
+  const handleStar = async (e, report) => {
+    e.stopPropagation()
+    const newStarred = !report.starred
+    try {
+      await updateReport(report.id, { starred: newStarred })
+      setReports(prev => prev.map(r => r.id === report.id ? { ...r, starred: newStarred } : r))
+      if (selectedReport?.id === report.id) {
+        setSelectedReport(prev => ({ ...prev, starred: newStarred }))
+      }
+    } catch {}
+  }
+
+  const handleDelete = async () => {
+    if (!selectedReport) return
+    try {
+      await deleteReport(selectedReport.id)
+      setReports(prev => prev.filter(r => r.id !== selectedReport.id))
+      setStats(prev => ({ ...prev, total: prev.total - 1 }))
+      setSelectedReport(null)
+      setMobileViewerOpen(false)
+      setDeleteConfirm(false)
+    } catch {}
+  }
+
+  const handleCopy = async () => {
+    if (!selectedReport) return
+    try {
+      await navigator.clipboard.writeText(selectedReport.content)
+      setToast('Copied to clipboard')
+      setTimeout(() => setToast(null), 2000)
+    } catch {}
+  }
+
+  const agentColor = (name) => AGENT_COLORS[name] || '#6b7280'
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-section-label">Documents</h2>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
-        >
-          <Plus size={14} />
-          Create Document
-        </button>
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 bg-lab-elevated border border-lab-border-hover rounded-md px-4 py-2 text-xs text-lab-text-primary shadow-lg animate-pulse-subtle">
+          {toast}
+        </div>
+      )}
+
+      {/* Left Panel — Filters */}
+      <div className="hidden lg:flex flex-col w-60 flex-shrink-0 border-r border-lab-border bg-lab-bg overflow-y-auto">
+        <div className="p-4 space-y-5">
+          {/* Search */}
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-lab-text-muted" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search reports..."
+              className="w-full bg-lab-surface border border-lab-border rounded-md pl-8 pr-3 py-1.5 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50"
+            />
+          </div>
+
+          {/* Agent Filter */}
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-2">Agents</div>
+            <div className="flex flex-wrap gap-1.5">
+              {AGENTS.map(a => (
+                <button
+                  key={a.name}
+                  onClick={() => setAgentFilter(a.name === 'All' ? null : a.name)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-subtle ${
+                    (a.name === 'All' && !agentFilter) || agentFilter === a.name
+                      ? 'text-white'
+                      : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                  }`}
+                  style={
+                    ((a.name === 'All' && !agentFilter) || agentFilter === a.name) && a.color
+                      ? { backgroundColor: a.color }
+                      : (a.name === 'All' && !agentFilter)
+                        ? { backgroundColor: 'rgba(255,255,255,0.1)' }
+                        : {}
+                  }
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Type Filter */}
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-2">Type</div>
+            <div className="space-y-0.5">
+              {REPORT_TYPES.map(t => (
+                <button
+                  key={t.label}
+                  onClick={() => setTypeFilter(t.value)}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-subtle ${
+                    typeFilter === t.value
+                      ? 'bg-white/[0.06] text-lab-text-primary font-medium'
+                      : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Filters */}
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-2">Quick Filters</div>
+            <div className="space-y-0.5">
+              <button
+                onClick={() => setStarredFilter(!starredFilter)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs flex items-center gap-2 transition-subtle ${
+                  starredFilter ? 'bg-white/[0.06] text-lab-text-primary' : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                }`}
+              >
+                <Star size={12} className={starredFilter ? 'fill-yellow-400 text-yellow-400' : ''} />
+                Starred only
+              </button>
+              <button
+                onClick={() => setUnreadFilter(!unreadFilter)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs flex items-center gap-2 transition-subtle ${
+                  unreadFilter ? 'bg-white/[0.06] text-lab-text-primary' : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                }`}
+              >
+                <Circle size={8} className={unreadFilter ? 'fill-blue-400 text-blue-400' : ''} />
+                Unread only
+              </button>
+            </div>
+          </div>
+
+          {/* Stats Widget */}
+          <div className="border-t border-lab-border pt-4 space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-2">Stats</div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-lab-text-secondary">Total</span>
+              <span className="text-lab-text-primary font-medium">{stats.total}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-lab-text-secondary">Unread</span>
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-medium">
+                {stats.unread}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-lab-text-secondary">Today</span>
+              <span className="text-lab-text-primary font-medium">{stats.today}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Table */}
-      <div className="card bg-transparent border-0 p-0">
-        {/* Headers */}
-        <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 border-b border-lab-border text-xs font-semibold uppercase tracking-wider text-lab-text-muted">
-          <div className="col-span-4">Title</div>
-          <div className="col-span-2">Type</div>
-          <div className="col-span-3">Agent</div>
-          <div className="col-span-3">Date</div>
+      {/* Centre Panel — Report List */}
+      <div className={`flex-1 overflow-y-auto ${selectedReport && !mobileViewerOpen ? 'hidden md:block' : ''} ${selectedReport ? 'md:max-w-[50%] lg:max-w-none lg:flex-1' : ''}`}>
+        {/* Mobile search bar */}
+        <div className="lg:hidden p-3 border-b border-lab-border">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-lab-text-muted" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search reports..."
+              className="w-full bg-lab-surface border border-lab-border rounded-md pl-8 pr-3 py-1.5 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50"
+            />
+          </div>
         </div>
 
-        {/* Rows */}
         {isLoading ? (
-          <div className="space-y-3 p-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-12 bg-lab-surface rounded animate-pulse" />
+          <div className="space-y-2 p-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-16 bg-lab-surface rounded animate-pulse" />
             ))}
           </div>
-        ) : documents.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText size={24} className="mx-auto text-lab-text-muted mb-3" />
-            <p className="text-sm text-lab-text-faint">No documents yet</p>
+        ) : reports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-6 py-16">
+            <FileText size={40} className="text-lab-text-muted mb-4" />
+            <p className="text-sm font-medium text-lab-text-secondary mb-2">No reports yet</p>
+            <p className="text-xs text-lab-text-muted max-w-xs leading-relaxed">
+              Your AI agents will generate reports here automatically. Reports from Scout, Quill, Forge, and Radar will appear as they run on schedule.
+            </p>
           </div>
         ) : (
-          <div className="divide-y divide-lab-border">
-            {documents.map(doc => (
-              <div key={doc.id}>
-                <button
-                  onClick={() =>
-                    setExpandedId(expandedId === doc.id ? null : doc.id)
-                  }
-                  className="w-full px-4 py-3 hover:bg-white/[0.02] transition-subtle text-left border-b border-white/[0.04] last:border-0"
-                >
-                  <div className="hidden md:grid grid-cols-12 gap-4 items-center">
-                    <div className="col-span-4">
-                      <div className="text-sm font-medium text-lab-text-primary">
-                        {doc.title}
+          <div>
+            {reports.map(report => (
+              <button
+                key={report.id}
+                onClick={() => handleSelectReport(report)}
+                className={`w-full text-left border-b border-lab-border hover:bg-white/[0.02] transition-subtle ${
+                  selectedReport?.id === report.id ? 'bg-white/[0.03]' : ''
+                }`}
+              >
+                <div className="flex" style={{ borderLeft: `4px solid ${agentColor(report.agent_name)}` }}>
+                  <div className="flex-1 px-4 py-3 min-w-0">
+                    <div className="flex items-start gap-3">
+                      {/* Unread dot */}
+                      <div className="flex-shrink-0 w-2 pt-2">
+                        {!report.read && (
+                          <div className="w-2 h-2 rounded-full bg-blue-400" />
+                        )}
                       </div>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="inline-block px-2 py-0.5 bg-lab-elevated text-xs text-lab-text-muted rounded">
-                        {doc.type || 'markdown'}
-                      </span>
-                    </div>
-                    <div className="col-span-3">
-                      <div className="text-xs text-lab-text-secondary">
-                        {doc.agent || '-'}
+                      <AvatarCircle name={report.agent_name} agent={report.agent_name} size={28} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`text-sm truncate ${!report.read ? 'font-semibold text-lab-text-primary' : 'font-medium text-lab-text-secondary'}`}>
+                            {report.title}
+                          </span>
+                          <span className="flex-shrink-0 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/[0.06] text-lab-text-muted">
+                            {TYPE_LABELS[report.report_type] || report.report_type}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-lab-text-muted">{report.agent_name}</span>
+                          <span className="text-lab-text-faint text-[10px]">&middot;</span>
+                          <span className="text-[11px] text-lab-text-muted">{formatDistanceToNow(new Date(report.created_at))}</span>
+                        </div>
+                        <p className="text-xs text-lab-text-muted mt-1 truncate">
+                          {report.content?.replace(/[#*_\n]/g, ' ').slice(0, 120)}
+                        </p>
                       </div>
-                    </div>
-                    <div className="col-span-3 text-right">
-                      <div className="text-xs text-lab-text-muted">
-                        {formatDate(new Date(doc.date))}
-                      </div>
+                      {/* Star */}
+                      <button
+                        onClick={(e) => handleStar(e, report)}
+                        className="flex-shrink-0 p-1 hover:bg-white/[0.05] rounded transition-subtle"
+                      >
+                        <Star
+                          size={14}
+                          className={report.starred ? 'fill-yellow-400 text-yellow-400' : 'text-lab-text-faint'}
+                        />
+                      </button>
                     </div>
                   </div>
-
-                  {/* Mobile view */}
-                  <div className="md:hidden">
-                    <div className="text-sm font-medium text-lab-text-primary mb-1">
-                      {doc.title}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-lab-text-muted">{doc.type || 'markdown'}</span>
-                      <span className="text-lab-text-faint">•</span>
-                      <span className="text-lab-text-muted">
-                        {formatDate(new Date(doc.date))}
-                      </span>
-                    </div>
-                  </div>
-                </button>
-
-                {expandedId === doc.id && (
-                  <div className="px-4 py-4 bg-white/[0.02] border-t border-lab-border">
-                    <div className="prose prose-invert max-w-none">
-                      <pre className="bg-lab-bg border border-lab-border rounded-md p-4 text-xs text-lab-text-secondary overflow-auto max-h-96">
-                        <code>{doc.content}</code>
-                      </pre>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              </button>
             ))}
+
+            {hasMore && (
+              <button
+                onClick={() => loadReports(false)}
+                className="w-full py-3 text-xs text-lab-text-muted hover:text-lab-text-secondary hover:bg-white/[0.02] transition-subtle flex items-center justify-center gap-1"
+              >
+                <ChevronDown size={14} />
+                Load more
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* Add Document Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="card-elevated w-96">
-            <h2 className="text-sm font-semibold text-lab-text-primary mb-4">
-              Create Document
-            </h2>
-
-            <form onSubmit={handleAddDocument} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                  Title
-                </label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) =>
-                    setFormData({ ...formData, title: e.target.value })
-                  }
-                  className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50"
-                  placeholder="Document title"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                  Type
-                </label>
-                <select
-                  value={formData.type}
-                  onChange={(e) =>
-                    setFormData({ ...formData, type: e.target.value })
-                  }
-                  className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary focus:outline-none focus:border-lab-accent/50"
-                >
-                  <option value="markdown">Markdown</option>
-                  <option value="text">Text</option>
-                  <option value="code">Code</option>
-                  <option value="pdf">PDF</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-lab-text-secondary mb-2">
-                  Content
-                </label>
-                <textarea
-                  value={formData.content}
-                  onChange={(e) =>
-                    setFormData({ ...formData, content: e.target.value })
-                  }
-                  className="w-full bg-lab-bg border border-lab-border rounded-md px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50 resize-none"
-                  placeholder="Document content..."
-                  rows={6}
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-4 border-t border-lab-border">
+      {/* Right Panel — Report Viewer */}
+      {selectedReport && (
+        <div className={`${mobileViewerOpen ? 'fixed inset-0 z-40 bg-lab-bg' : 'hidden'} md:relative md:flex md:flex-col md:w-1/2 md:block border-l border-lab-border overflow-y-auto`}>
+          {/* Header */}
+          <div className="sticky top-0 bg-lab-bg/95 backdrop-blur-sm border-b border-lab-border z-10">
+            <div className="px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <AvatarCircle name={selectedReport.agent_name} agent={selectedReport.agent_name} size={36} />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-lab-text-primary">{selectedReport.agent_name}</span>
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/[0.06] text-lab-text-muted">
+                        {TYPE_LABELS[selectedReport.report_type] || selectedReport.report_type}
+                      </span>
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/[0.04] text-lab-text-faint capitalize">
+                        {selectedReport.source}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-lab-text-muted mt-0.5">
+                      {formatFullDate(selectedReport.created_at)}
+                    </div>
+                  </div>
+                </div>
                 <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 px-3 py-2 border border-lab-border rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
+                  onClick={() => { setSelectedReport(null); setMobileViewerOpen(false) }}
+                  className="p-1 hover:bg-white/[0.05] rounded transition-subtle flex-shrink-0"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-3 py-2 bg-lab-accent text-white rounded-md text-xs font-medium hover:bg-lab-accent/90 transition-subtle"
-                >
-                  Create
+                  <X size={16} className="text-lab-text-muted" />
                 </button>
               </div>
-            </form>
+
+              {/* Action bar */}
+              <div className="flex items-center gap-1 mt-3">
+                <button
+                  onClick={(e) => handleStar(e, selectedReport)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
+                >
+                  <Star size={12} className={selectedReport.starred ? 'fill-yellow-400 text-yellow-400' : ''} />
+                  {selectedReport.starred ? 'Starred' : 'Star'}
+                </button>
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
+                >
+                  <Copy size={12} />
+                  Copy
+                </button>
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-lab-error/80 hover:bg-lab-error/10 transition-subtle"
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </div>
+            </div>
           </div>
+
+          {/* Content */}
+          <div className="px-5 py-5">
+            <h1 className="text-lg font-bold text-lab-text-primary mb-4">{selectedReport.title}</h1>
+            <div className="prose prose-invert prose-sm max-w-none
+              prose-headings:text-lab-text-primary prose-headings:font-semibold
+              prose-p:text-lab-text-secondary prose-p:leading-relaxed
+              prose-strong:text-lab-text-primary
+              prose-a:text-lab-accent prose-a:no-underline hover:prose-a:underline
+              prose-code:text-lab-text-secondary prose-code:bg-lab-elevated prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+              prose-pre:bg-lab-elevated prose-pre:border prose-pre:border-lab-border prose-pre:rounded-md
+              prose-li:text-lab-text-secondary
+              prose-table:border-collapse prose-th:border prose-th:border-lab-border prose-th:px-3 prose-th:py-1.5 prose-th:text-lab-text-primary prose-th:bg-lab-surface
+              prose-td:border prose-td:border-lab-border prose-td:px-3 prose-td:py-1.5 prose-td:text-lab-text-secondary
+              prose-blockquote:border-lab-border prose-blockquote:text-lab-text-muted
+              prose-hr:border-lab-border
+            ">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {selectedReport.content}
+              </ReactMarkdown>
+            </div>
+          </div>
+
+          {/* Delete Confirmation Modal */}
+          {deleteConfirm && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="card-elevated w-80">
+                <p className="text-sm text-lab-text-primary mb-4">Delete this report?</p>
+                <p className="text-xs text-lab-text-muted mb-4">This action cannot be undone.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setDeleteConfirm(false)}
+                    className="flex-1 px-3 py-2 border border-lab-border rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="flex-1 px-3 py-2 bg-lab-error text-white rounded-md text-xs font-medium hover:bg-lab-error/90 transition-subtle"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
