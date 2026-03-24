@@ -72,6 +72,29 @@ export async function runSchedule(id) {
   })
 }
 
+export async function createScheduleSimple(data) {
+  return api('/api/schedule/simple', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getJobExecutions(jobId, limit = 20) {
+  return api(`/api/schedule/${jobId}/executions?limit=${limit}`)
+}
+
+export async function getJobExecution(jobId, execId) {
+  return api(`/api/schedule/${jobId}/executions/${execId}`)
+}
+
+export async function submitJobFeedback(jobId, execId, data) {
+  return api(`/api/schedule/${jobId}/executions/${execId}/feedback`, {
+    method: 'POST', body: JSON.stringify(data)
+  })
+}
+
+export async function previewCron(params) {
+  const query = new URLSearchParams(params).toString()
+  return api(`/api/schedule/cron-preview?${query}`)
+}
+
 export async function getMemories() {
   return api('/api/memory')
 }

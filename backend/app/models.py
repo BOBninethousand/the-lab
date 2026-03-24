@@ -113,6 +113,18 @@ class ScheduledJobCreate(BaseModel):
     agent_id: str
 
 
+class ScheduledJobCreateSimple(BaseModel):
+    name: str
+    description: str
+    frequency: str = "daily"  # daily, weekdays, weekly, monthly, custom
+    time: str = "09:00"  # HH:MM
+    day_of_week: Optional[str] = None  # mon, tue, etc.
+    day_of_month: Optional[int] = None
+    cron_expression: Optional[str] = None  # only for custom frequency
+    prompt: str
+    agent_id: str
+
+
 class ScheduledJob(BaseModel):
     id: str
     name: str
@@ -123,6 +135,21 @@ class ScheduledJob(BaseModel):
     enabled: bool
     last_run: Optional[datetime] = None
     next_run: Optional[datetime] = None
+
+
+class JobExecution(BaseModel):
+    id: str
+    job_id: str
+    job_name: str
+    agent_id: str
+    agent_name: str
+    executed_at: datetime
+    status: str  # success, failed
+    result_preview: str
+    result_document_id: Optional[str] = None
+    error: Optional[str] = None
+    rating: Optional[int] = None
+    feedback: Optional[str] = None
 
 
 class ChatMessage(BaseModel):

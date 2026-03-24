@@ -16,6 +16,7 @@ from app.models import (
     JournalCreate,
     DocumentCreate,
     ScheduledJobCreate,
+    ScheduledJobCreateSimple,
     ChatRequest,
     ReportCreate,
     KnowledgeCreate,
@@ -64,6 +65,9 @@ agent_manager.memory_engine = {
     "build_context": build_context,
 }
 
+# Wire correction manager into scheduler for feedback → correction pipeline
+scheduler_manager.correction_manager = correction_manager
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -77,6 +81,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(f"{settings.DATA_DIR}/knowledge", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/agent_memory", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/corrections", exist_ok=True)
+    os.makedirs(f"{settings.DATA_DIR}/job_executions", exist_ok=True)
     scheduler_manager.start()
     # Try connecting to OpenClaw Gateway (non-blocking — OK if not running)
     asyncio.create_task(openclaw_bridge.connect())
@@ -523,6 +528,12 @@ async def create_schedule(data: ScheduledJobCreate):
     return job.model_dump(mode="json")
 
 
+@app.post("/api/schedule/simple")
+async def create_schedule_simple(data: ScheduledJobCreateSimple):
+    job = scheduler_manager.add_job_simple(data)
+    return job.model_dump(mode="json")
+
+
 @app.delete("/api/schedule/{job_id}")
 async def delete_schedule(job_id: str):
     scheduler_manager.remove_job(job_id)
@@ -546,6 +557,36 @@ async def get_calendar(days: int = 30):
 async def run_schedule_now(job_id: str):
     result = await asyncio.to_thread(scheduler_manager.run_job_now, job_id)
     return result
+
+
+@app.get("/api/schedule/cron-preview")
+async def cron_preview(frequency: str = "daily", time: str = "09:00", day_of_week: str = None, day_of_month: int = None):
+    return scheduler_manager.get_cron_preview(frequency, time, day_of_week, day_of_month)
+
+
+@app.get("/api/schedule/{job_id}/executions")
+async def list_job_executions(job_id: str, limit: int = 20):
+    return [e.model_dump(mode="json") for e in scheduler_manager.get_executions(job_id, limit)]
+
+
+@app.get("/api/schedule/{job_id}/executions/{exec_id}")
+async def get_job_execution(job_id: str, exec_id: str):
+    execution = scheduler_manager.get_execution(job_id, exec_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return execution.model_dump(mode="json")
+
+
+@app.post("/api/schedule/{job_id}/executions/{exec_id}/feedback")
+async def submit_execution_feedback(job_id: str, exec_id: str, data: dict):
+    rating = data.get("rating")
+    feedback = data.get("feedback", "")
+    if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be 1-5")
+    execution = await scheduler_manager.update_execution_feedback(job_id, exec_id, rating, feedback)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return execution.model_dump(mode="json")
 
 
 # --- COST TRACKING ENDPOINTS ---
