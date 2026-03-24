@@ -112,7 +112,8 @@ export function Agents() {
           ? (agentCosts[0]?.timestamp || agentCosts[0]?.logged_at || null)
           : null
         const lastReportTime = lastReport?.created_at || null
-        const lastActive = lastReportTime || lastCostTime
+        const times = [lastReportTime, lastCostTime].filter(Boolean).map(t => new Date(t).getTime())
+        const lastActive = times.length > 0 ? new Date(Math.max(...times)).toISOString() : null
 
         stats[agent.id] = {
           reports: reportCount,
@@ -294,10 +295,10 @@ export function Agents() {
                         </span>
                       ) : agent.status === 'error' ? (
                         <span className="px-2 py-0.5 bg-red-500/10 rounded text-[10px] text-red-400">Error</span>
-                      ) : stats.lastActive ? (
-                        <span className="px-2 py-0.5 bg-emerald-500/10 rounded text-[10px] text-emerald-400">Active {formatTimeAgo(stats.lastActive)}</span>
                       ) : (
-                        <span className="px-2 py-0.5 bg-lab-elevated rounded text-[10px] text-lab-text-muted">Idle</span>
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 rounded text-[10px] text-emerald-400">
+                          <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> Online
+                        </span>
                       )}
                       <button
                         onClick={(e) => {
