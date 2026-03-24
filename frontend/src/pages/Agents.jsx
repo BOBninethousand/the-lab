@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Send, Trash2, Plus, FileText, Clock, Zap, Bot, Wifi } from 'lucide-react'
 import { AvatarCircle } from '../components/AvatarCircle'
-import { getAgents, deleteAgent, createAgent, sendChat } from '../lib/api'
+import { getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats } from '../lib/api'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -79,15 +79,26 @@ export function Agents() {
 
   const loadAgentStats = async (agentList) => {
     try {
-      const docsRes = await fetch(`${API}/api/documents`)
-      const docs = docsRes.ok ? await docsRes.json() : []
-      const costsRes = await fetch(`${API}/api/costs/recent?limit=100`)
-      const costs = costsRes.ok ? await costsRes.json() : []
+      const [reportStatsData, costsRes] = await Promise.all([
+        getReportStats().catch(() => ({ total: 0, unread: 0, today: 0, by_agent: {}, by_type: {} })),
+        fetch(`${API}/api/costs/recent?limit=100`).then(r => r.ok ? r.json() : []).catch(() => []),
+      ])
 
       const stats = {}
       for (const agent of agentList) {
-        const agentDocs = Array.isArray(docs) ? docs.filter(d => d.agent_id === agent.id) : []
-        const agentCosts = Array.isArray(costs) ? costs.filter(c => c.agent_id === agent.id || c.agent_name === agent.name) : []
+        const agentCosts = Array.isArray(costsRes) ? costsRes.filter(c => c.agent_id === agent.id || c.agent_name === agent.name) : []
+        const reportCount = reportStatsData.by_agent?.[agent.name] || 0
+
+        // Get most recent report for this agent
+        let lastReport = null
+        try {
+          const reports = await getReports({ agent_name: agent.name, limit: 1 })
+          const reportList = Array.isArray(reports) ? reports : []
+          if (reportList.length > 0) lastReport = reportList[0]
+        } catch (e) {
+          // ignore
+        }
+
         let chatCount = 0
         try {
           const chatRes = await fetch(`${API}/api/chat/${agent.id}/history`)
@@ -97,15 +108,18 @@ export function Agents() {
           // ignore
         }
 
-        const lastActivity = agentCosts.length > 0
+        const lastCostTime = agentCosts.length > 0
           ? (agentCosts[0]?.timestamp || agentCosts[0]?.logged_at || null)
           : null
+        const lastReportTime = lastReport?.created_at || null
+        const lastActive = lastReportTime || lastCostTime
 
         stats[agent.id] = {
-          documents: agentDocs.length,
+          reports: reportCount,
           responses: chatCount,
           apiCalls: agentCosts.length,
-          lastActive: lastActivity,
+          lastActive,
+          lastReportTitle: lastReport?.title || null,
         }
       }
       setAgentStats(stats)
@@ -264,7 +278,7 @@ export function Agents() {
                 >
                   <div className="flex items-start gap-3 mb-3">
                     <div className="relative">
-                      <AvatarCircle name={agent.name} agent={agent.agent_type} size={36} />
+                      <AvatarCircle name={agent.name} agent={agent.name} size={36} />
                       {isWorking && (
                         <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-lab-surface animate-pulse" />
                       )}
@@ -280,6 +294,8 @@ export function Agents() {
                         </span>
                       ) : agent.status === 'error' ? (
                         <span className="px-2 py-0.5 bg-red-500/10 rounded text-[10px] text-red-400">Error</span>
+                      ) : stats.lastActive ? (
+                        <span className="px-2 py-0.5 bg-emerald-500/10 rounded text-[10px] text-emerald-400">Active {formatTimeAgo(stats.lastActive)}</span>
                       ) : (
                         <span className="px-2 py-0.5 bg-lab-elevated rounded text-[10px] text-lab-text-muted">Idle</span>
                       )}
@@ -299,8 +315,8 @@ export function Agents() {
 
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
-                      <div className="text-sm font-semibold text-lab-text-primary">{stats.documents || 0}</div>
-                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><FileText size={9} /> Docs</div>
+                      <div className="text-sm font-semibold text-lab-text-primary">{stats.reports || 0}</div>
+                      <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><FileText size={9} /> Reports</div>
                     </div>
                     <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
                       <div className="text-sm font-semibold text-lab-text-primary">{stats.responses || 0}</div>
@@ -316,8 +332,12 @@ export function Agents() {
                     <span className="px-2 py-0.5 bg-lab-elevated text-[10px] text-lab-text-muted rounded">
                       {isOpenClawActive ? 'openclaw' : agent.provider}
                     </span>
-                    <div className="flex items-center gap-1 text-[10px] text-lab-text-muted">
-                      <Clock size={9} /> {formatTimeAgo(stats.lastActive)}
+                    <div className="flex items-center gap-1 text-[10px] text-lab-text-muted truncate max-w-[60%]">
+                      <Clock size={9} className="flex-shrink-0" />
+                      {stats.lastReportTitle
+                        ? <span className="truncate">{stats.lastReportTitle}</span>
+                        : formatTimeAgo(stats.lastActive)
+                      }
                     </div>
                   </div>
                 </button>
