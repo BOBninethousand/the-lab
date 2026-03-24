@@ -78,13 +78,13 @@ export function Layout({ children }) {
                   to={item.path}
                   className={`flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle ${
                     isActive
-                      ? 'bg-white/[0.06] border-l-2 border-white text-white'
+                      ? 'text-lab-text-primary border-l-2 border-lab-accent'
                       : 'text-lab-text-secondary hover:bg-white/[0.03]'
                   }`}
                 >
                   <Icon
                     size={16}
-                    className={isActive ? 'text-white' : 'text-lab-text-muted'}
+                    className={isActive ? 'text-lab-accent' : 'text-lab-text-muted'}
                   />
                   <span className="text-sm font-medium">{item.label}</span>
                 </Link>
@@ -104,13 +104,13 @@ export function Layout({ children }) {
                 to={item.path}
                 className={`flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle ${
                   isActive
-                    ? 'bg-white/[0.06] border-l-2 border-white text-white'
+                    ? 'text-lab-text-primary border-l-2 border-lab-accent'
                     : 'text-lab-text-secondary hover:bg-white/[0.03]'
                 }`}
               >
                 <Icon
                   size={16}
-                  className={isActive ? 'text-white' : 'text-lab-text-muted'}
+                  className={isActive ? 'text-lab-accent' : 'text-lab-text-muted'}
                 />
                 <span className="text-sm font-medium">{item.label}</span>
               </Link>
