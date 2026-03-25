@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, RoundedBox, Html } from '@react-three/drei'
+import { OrbitControls, Html } from '@react-three/drei'
 import { getAgents } from '../lib/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 
@@ -41,9 +41,10 @@ function Desk({ position }) {
   return (
     <group position={position}>
       {/* Desktop surface */}
-      <RoundedBox args={[2.2, 0.08, 1.2]} position={[0, 0.75, 0]} radius={0.02} castShadow>
+      <mesh position={[0, 0.75, 0]} castShadow>
+        <boxGeometry args={[2.2, 0.08, 1.2]} />
         <meshStandardMaterial color="#1e1e24" />
-      </RoundedBox>
+      </mesh>
       {/* Legs */}
       {[[-0.9, 0, -0.4], [0.9, 0, -0.4], [-0.9, 0, 0.4], [0.9, 0, 0.4]].map((pos, i) => (
         <mesh key={i} position={[pos[0], 0.37, pos[2]]} castShadow>
@@ -53,9 +54,10 @@ function Desk({ position }) {
       ))}
       {/* Monitor */}
       <group position={[0, 1.15, -0.3]}>
-        <RoundedBox args={[0.9, 0.55, 0.04]} radius={0.02}>
+        <mesh>
+          <boxGeometry args={[0.9, 0.55, 0.04]} />
           <meshStandardMaterial color="#0a0a0c" />
-        </RoundedBox>
+        </mesh>
         {/* Screen glow */}
         <mesh position={[0, 0, 0.025]}>
           <planeGeometry args={[0.8, 0.45]} />
@@ -118,9 +120,10 @@ function AgentCharacter({ agent, position, onClick }) {
       {/* Agent body - sitting at desk */}
       <group ref={meshRef} position={[0, 1.15, 0.6]} onClick={onClick}>
         {/* Torso */}
-        <RoundedBox args={[0.4, 0.45, 0.25]} radius={0.08} castShadow>
+        <mesh castShadow>
+          <boxGeometry args={[0.4, 0.45, 0.25]} />
           <meshStandardMaterial color={color} />
-        </RoundedBox>
+        </mesh>
         {/* Head */}
         <mesh position={[0, 0.35, 0]} castShadow>
           <sphereGeometry args={[0.18, 16, 16]} />
@@ -169,9 +172,10 @@ function BossDesk() {
   return (
     <group position={[0, 0, -4]}>
       {/* Bigger desk */}
-      <RoundedBox args={[3, 0.1, 1.5]} position={[0, 0.75, 0]} radius={0.03} castShadow>
+      <mesh position={[0, 0.75, 0]} castShadow>
+        <boxGeometry args={[3, 0.1, 1.5]} />
         <meshStandardMaterial color="#1a1520" />
-      </RoundedBox>
+      </mesh>
       {[[-1.2, 0, -0.5], [1.2, 0, -0.5], [-1.2, 0, 0.5], [1.2, 0, 0.5]].map((pos, i) => (
         <mesh key={i} position={[pos[0], 0.37, pos[2]]}>
           <boxGeometry args={[0.08, 0.74, 0.08]} />
