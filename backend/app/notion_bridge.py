@@ -345,26 +345,25 @@ class NotionBridge:
 
             i += 1
 
-        # Notion API limits 100 blocks per request
-        return blocks[:100]
+        # Notion API limits 100 blocks per request (reserve 1 for metadata callout)
+        return blocks[:99]
 
     @staticmethod
     def _text_to_rich_text(text: str) -> List[dict]:
         """Convert text with **bold** and *italic* markers to Notion rich_text array."""
         import re
+        # Truncate to Notion's 2000 char limit per rich_text block
+        text = text[:2000]
         parts = []
         pos = 0
-        # Match **bold** and *italic*
         for match in re.finditer(r'\*\*(.+?)\*\*|\*(.+?)\*', text):
-            # Add text before match
             if match.start() > pos:
                 parts.append({"type": "text", "text": {"content": text[pos:match.start()]}})
-            if match.group(1):  # **bold**
+            if match.group(1):
                 parts.append({"type": "text", "text": {"content": match.group(1)}, "annotations": {"bold": True}})
-            elif match.group(2):  # *italic*
+            elif match.group(2):
                 parts.append({"type": "text", "text": {"content": match.group(2)}, "annotations": {"italic": True}})
             pos = match.end()
-        # Remaining text
         if pos < len(text):
             parts.append({"type": "text", "text": {"content": text[pos:]}})
         if not parts:
