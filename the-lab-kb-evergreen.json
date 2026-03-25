@@ -1,0 +1,176 @@
+[
+  {
+    "title": "Matthew's Decision Filter",
+    "category": "rule",
+    "content": "When evaluating any initiative or idea, ask: Does this help someone wake up to their capability, or does it just feel productive? Use this to filter out busy work that doesn't align with core purpose.",
+    "tags": "matthew, decision-filter, strategy"
+  },
+  {
+    "title": "Core Priority Rules",
+    "category": "rule",
+    "content": "Decision hierarchy: (1) Revenue — anything that gets money in the door. (2) Credibility/proof — testimonials, case studies, results. (3) Distribution — audience, leads, outreach, partnerships. (4) Product/offer strength. If it doesn't create value, reduce risk, or build proof, it's probably noise.",
+    "tags": "matthew, priority, strategy"
+  },
+  {
+    "title": "Communication Style",
+    "category": "rule",
+    "content": "British English and metric system — non-negotiable. Direct, sharp, no fluff — like talking to a colleague who says it straight. No syrupy compliments, no 'great question' padding. No vague wellness language ('support your journey', 'balance your body', 'holistic healing', 'alignment'). Never use the word 'genuinely'. Push towards clarity → structure → action. Email drafts: minimal formatting, no headers or bullet points unless listing 3+ items. Direct, conversational tone.",
+    "tags": "matthew, communication, style"
+  },
+  {
+    "title": "Reciprocity Gate",
+    "category": "rule",
+    "content": "All projects operate like a VIP club. People who engage earn access to advantages. People who don't get no further energy. No flogging dead horses. 2-3 touches is the limit for non-responders. Build reciprocity triggers into all sequences — taking an action (watch video, sign up, complete assessment) unlocks the next level of value (deeper content, group access, pricing tier). Advantages are earned, not given.",
+    "tags": "all-projects, strategy, reciprocity"
+  },
+  {
+    "title": "Health Content Constraint",
+    "category": "rule",
+    "content": "No medical claims. No diagnosing, curing, or treating. Frame everything around healthspan, function, capability, risk reduction. No vague wellness fluff — tie to concrete behaviours, measurable outcomes, and real-world capability.",
+    "tags": "all-projects, compliance, health-content"
+  },
+  {
+    "title": "Delegation Principle",
+    "category": "rule",
+    "content": "Always do as much as possible yourself before asking Matthew for input. If you can detect, look up, create, write, calculate, draft, research, or automate something — just do it. Only ask Matthew for things that require his input: decisions, personal context, creative direction, approval, or information you cannot access. Distinguish clearly: 'I must do' = requires voice, face, judgement, physical presence. 'AI can do' = drafting, file creation, research, updates, calculations, formatting. Matthew's time is extremely limited (~22 hours/week).",
+    "tags": "matthew, delegation, process"
+  },
+  {
+    "title": "Momentum Over Perfection",
+    "category": "rule",
+    "content": "Momentum beats perfection. When in doubt, default to the smallest action that advances the goal. Don't wait for perfect conditions or complete information. This directly counters Matthew's builder-perfectionism tendency.",
+    "tags": "matthew, execution, principle"
+  },
+  {
+    "title": "Guard Against Underpricing",
+    "category": "rule",
+    "content": "Matthew has a tendency to underprice. Actively guard against this when reviewing offers, tier structures, or coaching packages. Don't let scope creep or imposter syndrome drive prices down.",
+    "tags": "matthew, pricing, psychology"
+  },
+  {
+    "title": "Matthew's Core Identity",
+    "category": "fact",
+    "content": "Matthew D'haemer, 50, based in Lewes, East Sussex, UK. Qualified naturopath with an engineering background. 25+ years in natural/holistic health and preventative practice. Decade of researching longevity applications. Positioning: 'The Analytical Naturopath' — combining naturopathic training with analytical engineering precision. Expert status within the iridology practitioner community.",
+    "tags": "matthew, identity, background, positioning"
+  },
+  {
+    "title": "Family & Household",
+    "category": "fact",
+    "content": "Wife Florence handles most housework and food prep; does not drive. Four children aged 2–11. Living in rented house in Lewes. 26-year practice with Subud, a spiritual community in Lewes — formative part of Matthew's worldview.",
+    "tags": "matthew, family, household"
+  },
+  {
+    "title": "Team: Quim (VA)",
+    "category": "fact",
+    "content": "One VA: Quim, based in Philippines. Reliable. Main focus: technical work — website, backend, web development, AI development, programming, vibe-coding support. Needs clear instructions, pipeline of tasks, deadlines and follow-up to keep track, maintain clarity and accountability.",
+    "tags": "matthew, team, quim"
+  },
+  {
+    "title": "Desired Daily Schedule",
+    "category": "fact",
+    "content": "Wake: 05:30. Exercise + cold shower: 06:00. Deep work block 1: 06:30–07:30. School drop-off: 08:10-08:20, return ~09:15. Deep work block 2: 09:30-11:00. Light sprint block 3: 12:30-14:00. School pickup: 15:00. Family time: 15:00 onwards. Review: 20:30. Bed: 21:30. Three deep work blocks totalling ~5 hours/day when available. Realistic weekly capacity: ~22–25 hours.",
+    "tags": "matthew, schedule, daily-rhythm, capacity"
+  },
+  {
+    "title": "Tech Stack & Tools",
+    "category": "fact",
+    "content": "Sony a6300 video setup. ScreenFlow for editing. Brevo for email automation. Notion (Ultimate Brain template by Thomas Frank) for task management. Stripe for payments. Calendly for scheduling.",
+    "tags": "matthew, tools, tech-stack"
+  },
+  {
+    "title": "Revenue Target",
+    "category": "fact",
+    "content": "~£20,000/month revenue by March 2027. This drives all prioritisation.",
+    "tags": "matthew, finance, goal"
+  },
+  {
+    "title": "Why Statement",
+    "category": "reference",
+    "content": "I help people wake up to their own capability — to be truly alive, strong, and in sync with life — by giving them the analytical tools and guidance to tap into what's already inside them.",
+    "tags": "matthew, why, purpose"
+  },
+  {
+    "title": "Hormozi Day Structure",
+    "category": "reference",
+    "content": "Matthew's daily workload aims to be organised into three focus areas: (1) Promotion — reach new/existing clients (outreach, follow-ups, calls, email, social). (2) Delivery — fulfil client orders (reports, onboarding, support). (3) Building — create/improve products, services, tools, training material.",
+    "tags": "matthew, schedule, hormozi, framework"
+  },
+  {
+    "title": "Coaching & Business Growth Frameworks",
+    "category": "reference",
+    "content": "Matthew is actively growing his business, marketing, sales, and systems skills, influenced by Alex Hormozi, Tony Robbins, and similar business leaders. Hormozi principles: Value Equation (Dream Outcome × Perceived Likelihood / Time Delay × Effort), radical ownership, start before ready, sell expensive things, consistency beats intensity, patience with outputs/impatience with inputs. Robbins principles: identity as thermostat, Three Decisions (focus/meaning/action), state management. Combined voice: grounded in evidence, understands psychology of change. Avoid motivational fluff; ground in data and real-world behaviour.",
+    "tags": "matthew, frameworks, hormozi, robbins, growth"
+  },
+  {
+    "title": "Building vs Selling Pattern",
+    "category": "reference",
+    "content": "Matthew's known pattern: execution gap between building (feels productive, safe) and selling (feels vulnerable). This causes over-building products and under-promoting them. Agents should gently but firmly push toward selling and shipping over perfectionism.",
+    "tags": "matthew, psychology, execution"
+  },
+  {
+    "title": "IrisLab — Business Overview",
+    "category": "reference",
+    "content": "IrisLab (irislab.com) sells IrisExplorer iriscope system for iridology practitioners. ~2,000 practitioner contacts. 20+ years in operation; sales declining. Background/maintenance mode only. Emails: office@irislab.com (admin, IIPA correspondence), team@irislab.com (clients, sales, support). The contact list is the 1st distribution channel for HDL launch.",
+    "tags": "irislab, product, business"
+  },
+  {
+    "title": "HealthDataLab (HDL) — Business Overview",
+    "category": "reference",
+    "content": "HealthDataLab is an AI-powered longevity assessment platform. healthdatalab.com for front-facing/marketing, healthdatalab.net for backend access to tools/forms/reports. B2B primary (practitioner subscriptions) + B2C (individual reports). Named framework: 'Longevity Trajectory Protocol' — Map → Read → Guide → Track.",
+    "tags": "hdl, product, business"
+  },
+  {
+    "title": "Altituding — Business Overview",
+    "category": "reference",
+    "content": "Altituding (altituding.com) is a B2C longevity coaching programme. Tagline: 'Longevity by design.' PARKED until HDL has traction. Activates when HDL has 5-10 founding members, 2-3 testimonials, and Matthew has breathing room.",
+    "tags": "altituding, product, business"
+  },
+  {
+    "title": "IrisMapper — Future Product",
+    "category": "reference",
+    "content": "IrisMapper (irismapper.com) is an iridology map overlay tool planned as a future HDL add-on. Not currently active.",
+    "tags": "irismapper, product, future"
+  },
+  {
+    "title": "Practitioner Engagement Psychology",
+    "category": "reference",
+    "content": "Practitioners respond to authentic positioning about preparation and competence, not aggressive revenue promises. They think in professional development investments, not SaaS subscriptions. Believable messaging outperforms pushy sales copy. Many are struggling financially. The community is warm and collegial. Some are sceptical of iridology — never lead with it; lead with longevity, capability, evidence. Always offer low-barrier engagement first (watch video, read article, attend webinar) before suggesting Zoom calls or sales conversations. In regulated markets, defensible data beats status signalling.",
+    "tags": "hdl, practitioners, psychology, engagement"
+  },
+  {
+    "title": "Competitor Reference: Health Experts Alliance",
+    "category": "reference",
+    "content": "Dr Jason Olafsson, US-based. Webinar funnel → Longevity Practitioner Certification → business coaching upsell → events. Worth adopting: workshop-to-application model, named framework, 'bolt-on' positioning, dual-offer ladder, community as proof. Avoid: hype-to-substance ratio, selling to everyone, 'secret knowledge' framing, manufactured urgency. HDL advantage: working product with trackable outcomes vs certificates.",
+    "tags": "competitors, strategy, analysis"
+  },
+  {
+    "title": "Notion Setup",
+    "category": "reference",
+    "content": "Workspace 'MD2' using Ultimate Brain template. Key databases: Tasks, Projects, Notes, Tags, Goals, People, Reps Counter, Energy & State Log, Content Pipeline. Task Status flow: To Do → Doing → 2Review → Done. Tasks in '2Review' swept at daily kickoff. Task/project names kept short for mobile. Delegated template ID: 31a42a21-e9ae-8091-8940-dca3b36ef060.",
+    "tags": "matthew, notion, process"
+  },
+  {
+    "title": "What Worked — Personal Outreach",
+    "category": "preference",
+    "content": "Personal outreach emails with warm, individual tone + video link + Calendly embed outperform generic sequences. Human touch matters.",
+    "tags": "outreach, what-works"
+  },
+  {
+    "title": "What Didn't Work — CapCut",
+    "category": "preference",
+    "content": "CapCut AI auto-editing produced jagged, unwatchable output. Use ScreenFlow instead.",
+    "tags": "video, what-failed"
+  },
+  {
+    "title": "What Didn't Work — Friction-Heavy Logging",
+    "category": "preference",
+    "content": "Energy/reps logging failed repeatedly. If tracking creates compliance overhead rather than insight, redesign or remove it.",
+    "tags": "process, what-failed"
+  },
+  {
+    "title": "What Didn't Work — Soft Follow-Up",
+    "category": "preference",
+    "content": "Soft follow-ups without clear deadlines are ineffective (applies to delegation and outreach). Establish accountability frameworks upfront.",
+    "tags": "team, accountability, what-failed"
+  }
+]

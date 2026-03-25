@@ -242,6 +242,10 @@ export async function searchKnowledge(query) {
   return api(`/api/knowledge/search?q=${encodeURIComponent(query)}`)
 }
 
+export async function bulkImportKnowledge(entries) {
+  return api('/api/knowledge/bulk', { method: 'POST', body: JSON.stringify(entries) })
+}
+
 // Agent Memories
 export async function getAgentMemories(agentId) {
   return api(`/api/agents/${agentId}/memories`)

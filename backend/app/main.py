@@ -325,6 +325,108 @@ async def create_knowledge(data: KnowledgeCreate):
     return entry.model_dump(mode="json")
 
 
+@app.post("/api/knowledge/bulk")
+async def bulk_import_knowledge(entries: list):
+    """Import multiple knowledge base entries at once.
+    Accepts JSON array of {title, content, tags (comma-string or list), category}.
+    Deduplicates by title match.
+    """
+    existing = knowledge_manager.get_all()
+    existing_titles = {e.title.lower().strip() for e in existing}
+
+    created = 0
+    skipped = 0
+    errors = []
+
+    for i, raw in enumerate(entries):
+        try:
+            title = raw.get("title", "").strip()
+            if not title:
+                errors.append(f"Entry {i}: missing title")
+                continue
+
+            if title.lower() in existing_titles:
+                skipped += 1
+                continue
+
+            # Convert comma-separated tags string to list
+            tags = raw.get("tags", [])
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+            data = KnowledgeCreate(
+                title=title,
+                content=raw.get("content", ""),
+                tags=tags,
+                category=raw.get("category", "fact"),
+            )
+            entry = await knowledge_manager.add(data)
+            existing_titles.add(title.lower())
+            created += 1
+        except Exception as e:
+            errors.append(f"Entry {i} ({raw.get('title', '?')}): {str(e)}")
+
+    if created > 0:
+        await ws_manager.broadcast("knowledge_added", {"bulk_imported": created})
+
+    return {"created": created, "skipped": skipped, "errors": errors}
+
+
+@app.post("/api/knowledge/import-files")
+async def import_knowledge_files(file_entries: list):
+    """Import .md files from disk as knowledge entries.
+    Accepts JSON array of {title, file_path, tags (list), category}.
+    Reads file content from the given path.
+    """
+    existing = knowledge_manager.get_all()
+    existing_titles = {e.title.lower().strip() for e in existing}
+
+    created = 0
+    skipped = 0
+    errors = []
+
+    for i, raw in enumerate(file_entries):
+        try:
+            title = raw.get("title", "").strip()
+            file_path = raw.get("file_path", "").strip()
+
+            if not title or not file_path:
+                errors.append(f"Entry {i}: missing title or file_path")
+                continue
+
+            if title.lower() in existing_titles:
+                skipped += 1
+                continue
+
+            if not os.path.exists(file_path):
+                errors.append(f"Entry {i} ({title}): file not found: {file_path}")
+                continue
+
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            tags = raw.get("tags", [])
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+            data = KnowledgeCreate(
+                title=title,
+                content=content,
+                tags=tags,
+                category=raw.get("category", "reference"),
+            )
+            entry = await knowledge_manager.add(data)
+            existing_titles.add(title.lower())
+            created += 1
+        except Exception as e:
+            errors.append(f"Entry {i} ({raw.get('title', '?')}): {str(e)}")
+
+    if created > 0:
+        await ws_manager.broadcast("knowledge_added", {"bulk_imported": created})
+
+    return {"created": created, "skipped": skipped, "errors": errors}
+
+
 @app.get("/api/knowledge/{entry_id}")
 async def get_knowledge(entry_id: str):
     entry = knowledge_manager.get(entry_id)

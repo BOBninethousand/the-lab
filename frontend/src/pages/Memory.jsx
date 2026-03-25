@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Brain, BookOpen, ShieldCheck, Trash2, X, ChevronDown, Lightbulb, GraduationCap, Heart, Database, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Brain, BookOpen, ShieldCheck, Trash2, X, ChevronDown, Lightbulb, GraduationCap, Heart, Database, AlertTriangle, Upload } from 'lucide-react'
 import {
   getKnowledge, createKnowledge, searchKnowledge, deleteKnowledge,
   getAgentMemories, searchAgentMemories, deleteAgentMemory,
   getCorrections, getCorrectionRules, createCorrection,
-  getMemoryStats, getAgents,
+  getMemoryStats, getAgents, bulkImportKnowledge,
 } from '../lib/api'
 import { formatDate } from '../lib/time'
 
@@ -60,6 +60,10 @@ export function Memory() {
   const [corrections, setCorrections] = useState([])
   const [rules, setRules] = useState([])
   const [showAddCorrection, setShowAddCorrection] = useState(false)
+
+  // Import state
+  const [isImporting, setIsImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
 
   // Form state
   const [form, setForm] = useState({ title: '', content: '', tags: '', category: 'fact' })
@@ -183,6 +187,27 @@ export function Memory() {
     } catch {}
   }
 
+  const handleImportJSON = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setIsImporting(true)
+    setImportResult(null)
+    try {
+      const text = await file.text()
+      const entries = JSON.parse(text)
+      if (!Array.isArray(entries)) throw new Error('JSON must be an array of entries')
+      const result = await bulkImportKnowledge(entries)
+      setImportResult(result)
+      loadKnowledge()
+      loadStats()
+    } catch (err) {
+      setImportResult({ error: err.message })
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   const handleDeleteMemory = async (agentId, memoryId) => {
     try {
       await deleteAgentMemory(agentId, memoryId)
@@ -268,12 +293,28 @@ export function Memory() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => { setForm({ title: '', content: '', tags: '', category: 'fact' }); setShowAddKnowledge(true) }}
-              className="flex items-center gap-2 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
-            >
-              <Plus size={14} /> Add Knowledge
-            </button>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                id="kb-import-file"
+                accept=".json"
+                onChange={handleImportJSON}
+                className="hidden"
+              />
+              <button
+                onClick={() => document.getElementById('kb-import-file').click()}
+                disabled={isImporting}
+                className="flex items-center gap-2 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle disabled:opacity-50"
+              >
+                <Upload size={14} /> {isImporting ? 'Importing...' : 'Import JSON'}
+              </button>
+              <button
+                onClick={() => { setForm({ title: '', content: '', tags: '', category: 'fact' }); setShowAddKnowledge(true) }}
+                className="flex items-center gap-2 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
+              >
+                <Plus size={14} /> Add Knowledge
+              </button>
+            </div>
           </div>
 
           <div className="relative">
@@ -286,6 +327,24 @@ export function Memory() {
               className="w-full bg-lab-surface border border-lab-border rounded-md pl-9 pr-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-muted focus:outline-none focus:border-lab-accent/50 transition-subtle"
             />
           </div>
+
+          {importResult && (
+            <div className={`p-3 rounded-lg text-xs flex items-center justify-between ${
+              importResult.error
+                ? 'bg-red-500/10 border border-red-500/20 text-red-400'
+                : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+            }`}>
+              <span>
+                {importResult.error
+                  ? `Import failed: ${importResult.error}`
+                  : `Imported ${importResult.created} entries${importResult.skipped ? `, ${importResult.skipped} skipped (duplicates)` : ''}${importResult.errors?.length ? `, ${importResult.errors.length} errors` : ''}`
+                }
+              </span>
+              <button onClick={() => setImportResult(null)} className="ml-2 hover:opacity-70">
+                <X size={14} />
+              </button>
+            </div>
+          )}
 
           {isLoading ? (
             <LoadingSkeleton />
