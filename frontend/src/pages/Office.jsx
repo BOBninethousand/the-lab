@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Text, RoundedBox, Html } from '@react-three/drei'
+import { OrbitControls, RoundedBox, Html } from '@react-three/drei'
 import { getAgents } from '../lib/api'
 import { useWebSocket } from '../hooks/useWebSocket'
-import * as THREE from 'three'
 
 const AGENT_COLORS = {
   Scout: '#3b6fcc',
@@ -128,16 +127,9 @@ function AgentCharacter({ agent, position, onClick }) {
           <meshStandardMaterial color={color} />
         </mesh>
         {/* Initial on body */}
-        <Text
-          position={[0, 0, 0.13]}
-          fontSize={0.18}
-          color="white"
-          anchorX="center"
-          anchorY="middle"
-          font={undefined}
-        >
-          {agent.name[0]}
-        </Text>
+        <Html position={[0, 0, 0.13]} center>
+          <span className="text-white font-bold text-sm select-none pointer-events-none">{agent.name[0]}</span>
+        </Html>
 
         {/* Status indicator above head */}
         {isWorking && (
