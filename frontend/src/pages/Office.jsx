@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef, Suspense } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Html } from '@react-three/drei'
+import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import { getAgents } from '../lib/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 
@@ -11,223 +10,11 @@ const AGENT_COLORS = {
   Radar: '#1d8fa0',
 }
 
-const DESK_POSITIONS = [
-  [-3, 0, -1.5],
-  [3, 0, -1.5],
-  [-3, 0, 3],
-  [3, 0, 3],
-]
-
-function OfficeFloor() {
-  return (
-    <group>
-      {/* Main floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 1]} receiveShadow>
-        <planeGeometry args={[16, 12]} />
-        <meshStandardMaterial color="#151518" />
-      </mesh>
-      {/* Grid lines */}
-      <gridHelper args={[16, 16, '#1a1a1f', '#1a1a1f']} position={[0, 0, 1]} />
-      {/* Floor accent border */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 1]}>
-        <ringGeometry args={[7.5, 8, 64]} />
-        <meshStandardMaterial color="#1e293b" transparent opacity={0.15} />
-      </mesh>
-    </group>
-  )
-}
-
-function Desk({ position }) {
-  return (
-    <group position={position}>
-      {/* Desktop surface */}
-      <mesh position={[0, 0.75, 0]} castShadow>
-        <boxGeometry args={[2.2, 0.08, 1.2]} />
-        <meshStandardMaterial color="#1e1e24" />
-      </mesh>
-      {/* Legs */}
-      {[[-0.9, 0, -0.4], [0.9, 0, -0.4], [-0.9, 0, 0.4], [0.9, 0, 0.4]].map((pos, i) => (
-        <mesh key={i} position={[pos[0], 0.37, pos[2]]} castShadow>
-          <boxGeometry args={[0.06, 0.74, 0.06]} />
-          <meshStandardMaterial color="#28282e" />
-        </mesh>
-      ))}
-      {/* Monitor */}
-      <group position={[0, 1.15, -0.3]}>
-        <mesh>
-          <boxGeometry args={[0.9, 0.55, 0.04]} />
-          <meshStandardMaterial color="#0a0a0c" />
-        </mesh>
-        {/* Screen glow */}
-        <mesh position={[0, 0, 0.025]}>
-          <planeGeometry args={[0.8, 0.45]} />
-          <meshStandardMaterial color="#0f172a" emissive="#1e3a5f" emissiveIntensity={0.3} />
-        </mesh>
-        {/* Monitor stand */}
-        <mesh position={[0, -0.35, 0]}>
-          <boxGeometry args={[0.08, 0.15, 0.08]} />
-          <meshStandardMaterial color="#28282e" />
-        </mesh>
-      </group>
-      {/* Chair */}
-      <group position={[0, 0, 0.9]}>
-        <mesh position={[0, 0.4, 0]}>
-          <boxGeometry args={[0.5, 0.06, 0.5]} />
-          <meshStandardMaterial color="#1a1a20" />
-        </mesh>
-        <mesh position={[0, 0.7, -0.22]}>
-          <boxGeometry args={[0.5, 0.55, 0.06]} />
-          <meshStandardMaterial color="#1a1a20" />
-        </mesh>
-      </group>
-    </group>
-  )
-}
-
-function AgentCharacter({ agent, position, onClick }) {
-  const meshRef = useRef()
-  const glowRef = useRef()
-  const color = AGENT_COLORS[agent.name] || '#666'
-  const isWorking = agent.status === 'working'
-  const isError = agent.status === 'error'
-
-  useFrame((state) => {
-    if (!meshRef.current) return
-    const t = state.clock.elapsedTime
-
-    if (isWorking) {
-      // Working: bob up and down faster
-      meshRef.current.position.y = 1.15 + Math.sin(t * 3) * 0.05
-      meshRef.current.rotation.y = Math.sin(t * 2) * 0.1
-    } else {
-      // Idle: gentle breathing
-      meshRef.current.position.y = 1.15 + Math.sin(t * 0.8) * 0.015
-      meshRef.current.rotation.y = 0
-    }
-
-    // Glow pulse for working agents
-    if (glowRef.current) {
-      glowRef.current.material.opacity = isWorking
-        ? 0.15 + Math.sin(t * 2) * 0.1
-        : 0
-    }
-  })
-
-  return (
-    <group position={[position[0], 0, position[2]]}>
-      <Desk position={[0, 0, 0]} />
-
-      {/* Agent body - sitting at desk */}
-      <group ref={meshRef} position={[0, 1.15, 0.6]} onClick={onClick}>
-        {/* Torso */}
-        <mesh castShadow>
-          <boxGeometry args={[0.4, 0.45, 0.25]} />
-          <meshStandardMaterial color={color} />
-        </mesh>
-        {/* Head */}
-        <mesh position={[0, 0.35, 0]} castShadow>
-          <sphereGeometry args={[0.18, 16, 16]} />
-          <meshStandardMaterial color={color} />
-        </mesh>
-        {/* Initial on body */}
-        <Html position={[0, 0, 0.13]} center>
-          <span className="text-white font-bold text-sm select-none pointer-events-none">{agent.name[0]}</span>
-        </Html>
-
-        {/* Status indicator above head */}
-        {isWorking && (
-          <mesh position={[0, 0.65, 0]}>
-            <sphereGeometry args={[0.06, 8, 8]} />
-            <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={2} />
-          </mesh>
-        )}
-        {isError && (
-          <mesh position={[0, 0.65, 0]}>
-            <sphereGeometry args={[0.06, 8, 8]} />
-            <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2} />
-          </mesh>
-        )}
-      </group>
-
-      {/* Ground glow for working agents */}
-      <mesh ref={glowRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0.5]}>
-        <circleGeometry args={[1.2, 32]} />
-        <meshStandardMaterial color={color} transparent opacity={0} />
-      </mesh>
-
-      {/* Name label */}
-      <Html position={[0, -0.15, 0.6]} center>
-        <div className="text-center pointer-events-none select-none">
-          <p className="text-[10px] font-semibold text-white/80 whitespace-nowrap">{agent.name}</p>
-          <p className="text-[8px] text-white/40 whitespace-nowrap">
-            {isWorking ? agent.current_task?.slice(0, 25) || 'Working...' : 'Idle'}
-          </p>
-        </div>
-      </Html>
-    </group>
-  )
-}
-
-function BossDesk() {
-  return (
-    <group position={[0, 0, -4]}>
-      {/* Bigger desk */}
-      <mesh position={[0, 0.75, 0]} castShadow>
-        <boxGeometry args={[3, 0.1, 1.5]} />
-        <meshStandardMaterial color="#1a1520" />
-      </mesh>
-      {[[-1.2, 0, -0.5], [1.2, 0, -0.5], [-1.2, 0, 0.5], [1.2, 0, 0.5]].map((pos, i) => (
-        <mesh key={i} position={[pos[0], 0.37, pos[2]]}>
-          <boxGeometry args={[0.08, 0.74, 0.08]} />
-          <meshStandardMaterial color="#28282e" />
-        </mesh>
-      ))}
-      {/* Nameplate */}
-      <Html position={[0, 1.1, 0]} center>
-        <div className="px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[9px] text-white/50 whitespace-nowrap pointer-events-none">
-          BOSS DESK
-        </div>
-      </Html>
-    </group>
-  )
-}
-
-function Lights() {
-  return (
-    <>
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[8, 12, 5]} intensity={0.6} castShadow shadow-mapSize={1024} />
-      <pointLight position={[-5, 6, -3]} intensity={0.3} color="#3b82f6" />
-      <pointLight position={[5, 6, 3]} intensity={0.3} color="#8b5cf6" />
-    </>
-  )
-}
-
-function Scene({ agents, onAgentClick }) {
-  return (
-    <>
-      <Lights />
-      <OfficeFloor />
-      <BossDesk />
-      {agents.map((agent, idx) => (
-        <AgentCharacter
-          key={agent.id}
-          agent={agent}
-          position={DESK_POSITIONS[idx] || [idx * 3 - 4.5, 0, 2]}
-          onClick={() => onAgentClick(agent)}
-        />
-      ))}
-      <OrbitControls
-        maxPolarAngle={Math.PI / 2.3}
-        minPolarAngle={Math.PI / 6}
-        minDistance={5}
-        maxDistance={18}
-        target={[0, 0, 1]}
-        enableDamping
-        dampingFactor={0.05}
-      />
-    </>
-  )
+const AGENT_EMOJIS = {
+  Scout: '🔍',
+  Quill: '✏️',
+  Forge: '🔨',
+  Radar: '📡',
 }
 
 export function Office() {
@@ -236,9 +23,7 @@ export function Office() {
   const [selectedAgent, setSelectedAgent] = useState(null)
   const { events } = useWebSocket()
 
-  useEffect(() => {
-    loadAgents()
-  }, [])
+  useEffect(() => { loadAgents() }, [])
 
   useEffect(() => {
     if (events.length > 0) {
@@ -266,45 +51,226 @@ export function Office() {
   const activeCount = agents.filter(a => a.status === 'working').length
 
   return (
-    <div className="h-[calc(100vh-80px)] relative">
+    <div className="h-[calc(100vh-80px)] relative overflow-hidden select-none" style={{ perspective: '1200px' }}>
       {/* Status bar */}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-4 px-3 py-1.5 bg-black/40 backdrop-blur-sm rounded-lg border border-white/5">
-        <span className="text-[10px] text-white/60">
-          {agents.length} agents · {activeCount} active
-        </span>
-        <span className="text-[10px] text-white/30">Orbit: drag · Zoom: scroll</span>
+      <div className="absolute top-2 left-2 z-20 flex items-center gap-4 px-3 py-1.5 bg-black/50 backdrop-blur-sm rounded-lg border border-white/5">
+        <span className="text-[10px] text-white/60">{agents.length} agents · {activeCount} active</span>
       </div>
 
-      {/* 3D Canvas */}
-      <Canvas
-        shadows
-        camera={{ position: [0, 10, 12], fov: 45 }}
-        style={{ background: '#0a0a0c' }}
-      >
-        <Suspense fallback={null}>
-          <Scene agents={agents} onAgentClick={setSelectedAgent} />
-        </Suspense>
-      </Canvas>
+      {/* Isometric Office Floor */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="relative"
+          style={{
+            transform: 'rotateX(55deg) rotateZ(-45deg)',
+            transformStyle: 'preserve-3d',
+          }}
+        >
+          {/* Floor */}
+          <div
+            className="relative"
+            style={{
+              width: '600px',
+              height: '500px',
+              background: 'linear-gradient(135deg, #12121a 0%, #0e0e14 100%)',
+              borderRadius: '8px',
+              boxShadow: '0 40px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)',
+              backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
+              backgroundSize: '50px 50px',
+            }}
+          >
+            {/* Office label */}
+            <div
+              className="absolute text-[10px] font-bold tracking-[0.3em] text-white/10 uppercase"
+              style={{ top: '20px', left: '30px', transform: 'rotateZ(45deg) rotateX(-55deg)', transformStyle: 'preserve-3d' }}
+            >
+              The Lab HQ
+            </div>
+
+            {/* Agent Desks */}
+            {agents.map((agent, idx) => {
+              const positions = [
+                { left: '80px', top: '80px' },
+                { left: '320px', top: '80px' },
+                { left: '80px', top: '280px' },
+                { left: '320px', top: '280px' },
+              ]
+              const pos = positions[idx] || { left: `${80 + (idx % 2) * 240}px`, top: `${80 + Math.floor(idx / 2) * 200}px` }
+              const color = AGENT_COLORS[agent.name] || '#666'
+              const isWorking = agent.status === 'working'
+              const isError = agent.status === 'error'
+
+              return (
+                <div
+                  key={agent.id}
+                  className="absolute cursor-pointer group"
+                  style={{ ...pos, transformStyle: 'preserve-3d' }}
+                  onClick={() => setSelectedAgent(agent)}
+                >
+                  {/* Desk surface */}
+                  <div
+                    className="relative transition-all duration-300"
+                    style={{
+                      width: '160px',
+                      height: '100px',
+                      transformStyle: 'preserve-3d',
+                    }}
+                  >
+                    {/* Desk top */}
+                    <div style={{
+                      width: '160px',
+                      height: '100px',
+                      background: 'linear-gradient(135deg, #1e1e28 0%, #16161e 100%)',
+                      borderRadius: '6px',
+                      border: `1px solid ${isWorking ? color + '40' : 'rgba(255,255,255,0.05)'}`,
+                      boxShadow: isWorking ? `0 0 20px ${color}20, 0 8px 24px rgba(0,0,0,0.4)` : '0 8px 24px rgba(0,0,0,0.3)',
+                      transition: 'all 0.3s ease',
+                      position: 'relative',
+                      transform: 'translateZ(30px)',
+                    }}>
+                      {/* Monitor */}
+                      <div style={{
+                        position: 'absolute',
+                        top: '10px',
+                        left: '50%',
+                        transform: 'translateX(-50%) translateZ(20px)',
+                        width: '60px',
+                        height: '35px',
+                        background: isWorking ? '#0a1628' : '#0a0a10',
+                        borderRadius: '3px',
+                        border: `1px solid ${isWorking ? color + '30' : 'rgba(255,255,255,0.05)'}`,
+                        boxShadow: isWorking ? `0 0 8px ${color}15` : 'none',
+                        transition: 'all 0.3s ease',
+                      }}>
+                        {/* Screen content lines */}
+                        {isWorking && (
+                          <div className="p-1.5 space-y-1">
+                            <div className="h-[2px] rounded-full animate-pulse" style={{ width: '70%', background: color + '60' }} />
+                            <div className="h-[2px] rounded-full animate-pulse" style={{ width: '50%', background: color + '40', animationDelay: '0.2s' }} />
+                            <div className="h-[2px] rounded-full animate-pulse" style={{ width: '85%', background: color + '30', animationDelay: '0.4s' }} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Agent avatar */}
+                      <div
+                        className={`absolute transition-all duration-500 ${isWorking ? 'animate-bounce' : ''}`}
+                        style={{
+                          bottom: '8px',
+                          right: '12px',
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          background: color,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          color: 'white',
+                          boxShadow: isWorking
+                            ? `0 0 12px ${color}80, 0 2px 8px rgba(0,0,0,0.3)`
+                            : '0 2px 8px rgba(0,0,0,0.3)',
+                          transform: `translateZ(15px)`,
+                          animationDuration: isWorking ? '1.5s' : '0s',
+                        }}
+                      >
+                        {agent.name[0]}
+                      </div>
+
+                      {/* Status dot */}
+                      <div
+                        className={isWorking ? 'animate-ping' : ''}
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          background: isError ? '#ef4444' : isWorking ? '#10b981' : '#6b7280',
+                          boxShadow: isWorking ? '0 0 6px #10b981' : isError ? '0 0 6px #ef4444' : 'none',
+                        }}
+                      />
+                    </div>
+
+                    {/* Desk legs (3D effect) */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '-16px',
+                      left: '10px',
+                      width: '140px',
+                      height: '16px',
+                      background: 'linear-gradient(to bottom, #121218 0%, #0a0a0e 100%)',
+                      borderRadius: '0 0 4px 4px',
+                      transform: 'translateZ(14px)',
+                    }} />
+                  </div>
+
+                  {/* Name + Status label */}
+                  <div
+                    className="mt-3 text-center"
+                    style={{ transform: 'rotateZ(45deg) rotateX(-55deg) translateZ(30px)', transformStyle: 'preserve-3d' }}
+                  >
+                    <p className="text-xs font-semibold text-white/80">{agent.name}</p>
+                    <p className="text-[9px] text-white/40">
+                      {isWorking ? '⚡ Working' : isError ? '⚠ Error' : '● Online'}
+                    </p>
+                    {isWorking && agent.current_task && (
+                      <p className="text-[8px] text-white/25 mt-0.5 max-w-[120px] truncate mx-auto">
+                        {agent.current_task}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Boss Desk */}
+            <div
+              className="absolute"
+              style={{
+                left: '200px',
+                bottom: '30px',
+                width: '200px',
+                height: '60px',
+                background: 'linear-gradient(135deg, #1a1428 0%, #14101e 100%)',
+                borderRadius: '6px',
+                border: '1px solid rgba(139,92,246,0.15)',
+                boxShadow: '0 0 15px rgba(139,92,246,0.05), 0 8px 24px rgba(0,0,0,0.3)',
+                transform: 'translateZ(30px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <span
+                className="text-[9px] font-bold tracking-wider text-white/20 uppercase"
+                style={{ transform: 'rotateZ(45deg) rotateX(-55deg)', transformStyle: 'preserve-3d' }}
+              >
+                Boss Desk
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Agent detail popup */}
       {selectedAgent && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-lab-elevated/95 backdrop-blur-md border border-white/10 rounded-xl p-4 w-72 shadow-2xl">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-lab-elevated/95 backdrop-blur-md border border-white/10 rounded-xl p-4 w-72 shadow-2xl">
           <div className="flex items-center gap-3 mb-3">
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg"
               style={{ backgroundColor: AGENT_COLORS[selectedAgent.name] || '#666' }}
             >
-              {selectedAgent.name[0]}
+              {AGENT_EMOJIS[selectedAgent.name] || selectedAgent.name[0]}
             </div>
             <div>
               <p className="text-sm font-semibold text-white">{selectedAgent.name}</p>
               <p className="text-[10px] text-white/50">{selectedAgent.role}</p>
             </div>
-            <button
-              onClick={() => setSelectedAgent(null)}
-              className="ml-auto text-white/30 hover:text-white/60 text-lg"
-            >
-              x
+            <button onClick={() => setSelectedAgent(null)} className="ml-auto text-white/30 hover:text-white/60">
+              <X size={16} />
             </button>
           </div>
 
