@@ -239,6 +239,55 @@ class AgentMemoryManager:
         except Exception as e:
             logger.warning(f"Memory extraction failed for agent {agent_id}: {e}")
 
+    async def extract_from_report(
+        self, agent_id: str, report_content: str, report_type: str, agent_name: str, llm_func=None
+    ):
+        """Extract key learnings from a completed report and save as agent memories."""
+        try:
+            if llm_func is None:
+                return
+
+            prompt = (
+                f"You are reviewing a {report_type} report by {agent_name}. "
+                f"Extract 3-5 key facts, findings, or actionable insights that should be remembered for future reports. "
+                f"Focus on: specific data points, company names, market trends, decisions made, or recommendations given.\n\n"
+                f"Report content:\n{report_content[:2000]}\n\n"
+                f"Return ONLY a JSON array: [{{\"content\": \"...\", \"type\": \"insight|learning|fact\", \"tags\": [...]}}]\n"
+                f"If nothing new worth remembering, return []."
+            )
+
+            response_text = await llm_func(prompt)
+            if not response_text:
+                return
+
+            import re
+            json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+            if not json_match:
+                return
+
+            items = json.loads(json_match.group())
+            if not isinstance(items, list):
+                return
+
+            saved = 0
+            for item in items[:5]:
+                content = item.get("content", "").strip()
+                if not content or len(content) < 10:
+                    continue
+                memory_type = item.get("type", "insight")
+                if memory_type not in ("insight", "learning", "preference", "fact"):
+                    memory_type = "insight"
+                tags = item.get("tags", [])
+                if not isinstance(tags, list):
+                    tags = []
+                tags.append(report_type)
+                await self.add(agent_id, content, memory_type, tags[:5])
+                saved += 1
+
+            logger.info(f"Extracted {saved} learnings from {agent_name}'s {report_type} report")
+        except Exception as e:
+            logger.warning(f"Report learning extraction failed for {agent_name}: {e}")
+
 
 class CorrectionManager:
     def __init__(self, embedding_manager: EmbeddingManager, knowledge_manager: KnowledgeBaseManager):

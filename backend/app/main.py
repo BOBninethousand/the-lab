@@ -349,6 +349,32 @@ async def delete_knowledge(entry_id: str):
 
 
 # --- AGENT MEMORY ENDPOINTS ---
+@app.get("/api/agents/{agent_id}/enhanced-prompt")
+async def get_enhanced_prompt(agent_id: str, task: str = ""):
+    """Returns agent's system prompt with injected memory context. Used by n8n."""
+    agent = agent_manager.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    memory_context = await agent_manager._get_memory_context(agent_id, task or agent.goal)
+    system_prompt = (
+        f"You are {agent.name}, a {agent.role} working for HealthDataLab.\n"
+        f"Your goal: {agent.goal}\n"
+        f"Your background: {agent.backstory}\n\n"
+        f"Give detailed, substantive responses. Use British English. Be professional and direct."
+    )
+    if memory_context:
+        system_prompt += f"\n\n{memory_context}"
+    memory_count = agent_memory_manager.count(agent_id)
+    rules_count = len(correction_manager.get_rules(agent_id))
+    return {
+        "agent_name": agent.name,
+        "system_prompt": system_prompt,
+        "memory_count": memory_count,
+        "rules_count": rules_count,
+        "has_memory": memory_count > 0 or rules_count > 0,
+    }
+
+
 @app.get("/api/agents/{agent_id}/memories/search")
 async def search_agent_memories(agent_id: str, q: str = ""):
     if not q:
@@ -448,9 +474,10 @@ async def list_reports(
 async def create_report(data: ReportCreate):
     report = report_manager.create_report(data)
     await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
-    # Auto-publish to Notion
+    # Auto-publish to Notion + extract learnings for memory
     if notion_bridge.configured:
         asyncio.create_task(_publish_report_to_notion(report))
+    asyncio.create_task(_extract_report_learnings(report))
     return report.model_dump(mode="json")
 
 
@@ -469,6 +496,30 @@ async def _publish_report_to_notion(report):
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Notion auto-publish failed: {e}")
+
+
+async def _extract_report_learnings(report):
+    """Extract key insights from a report and save as agent memories."""
+    try:
+        async def _llm_for_extraction(prompt: str) -> str:
+            agent = agent_manager.get_agent(report.agent_id)
+            if not agent:
+                return ""
+            llm = agent_manager.get_llm(agent.provider, agent.model_name)
+            from langchain_core.messages import HumanMessage
+            response = await asyncio.to_thread(llm.invoke, [HumanMessage(content=prompt)])
+            return response.content
+
+        await agent_memory_manager.extract_from_report(
+            agent_id=report.agent_id,
+            report_content=report.content,
+            report_type=report.report_type,
+            agent_name=report.agent_name,
+            llm_func=_llm_for_extraction,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Report learning extraction failed: {e}")
 
 
 @app.post("/api/reports/generate")
@@ -508,9 +559,10 @@ async def generate_report(data: dict):
         )
         report = report_manager.create_report(report_data)
         await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
-        # Auto-publish to Notion
+        # Auto-publish to Notion + extract learnings for memory
         if notion_bridge.configured:
             asyncio.create_task(_publish_report_to_notion(report))
+        asyncio.create_task(_extract_report_learnings(report))
         return report.model_dump(mode="json")
     except Exception as e:
         agent_manager.update_status(agent_id, "error", str(e))
