@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, Component } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
@@ -17,29 +17,51 @@ const Office = lazy(() => import('./pages/Office').then(m => ({ default: m.Offic
 function PageLoader() {
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="text-sm text-lab-text-muted">Loading...</div>
+      <div className="text-sm text-lab-text-muted">Loading 3D Office...</div>
     </div>
   )
+}
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-sm text-lab-text-secondary mb-2">3D Office failed to load</p>
+            <button onClick={() => this.setState({ hasError: false })} className="text-xs text-lab-accent hover:underline">Try again</button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }
 
 export default function App() {
   return (
     <Router>
       <Layout>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/office" element={<Office />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/memory" element={<Memory />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="/teams" element={<Teams />} />
-            <Route path="/costs" element={<Costs />} />
-            <Route path="/openclaw" element={<OpenClaw />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </Suspense>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/agents" element={<Agents />} />
+          <Route path="/office" element={
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
+                <Office />
+              </Suspense>
+            </ErrorBoundary>
+          } />
+          <Route path="/calendar" element={<Calendar />} />
+          <Route path="/memory" element={<Memory />} />
+          <Route path="/documents" element={<Documents />} />
+          <Route path="/teams" element={<Teams />} />
+          <Route path="/costs" element={<Costs />} />
+          <Route path="/openclaw" element={<OpenClaw />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
       </Layout>
     </Router>
   )
