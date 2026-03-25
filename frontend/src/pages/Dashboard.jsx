@@ -133,39 +133,54 @@ export function Dashboard() {
       </div>
 
       {/* Notion Tasks */}
-      {notionStatus?.connected && (
+      {notionStatus && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <h2 className="text-section-label">Notion Tasks</h2>
-              <span className="flex items-center gap-1 text-[10px] text-emerald-400">
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> {notionStatus.database_name}
-              </span>
-              {notionStatus.last_sync && (
-                <span className="text-[10px] text-lab-text-muted">
-                  Synced {formatDistanceToNow(new Date(notionStatus.last_sync))}
+              {notionStatus.connected ? (
+                <>
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> {notionStatus.database_name}
+                  </span>
+                  {notionStatus.last_sync && (
+                    <span className="text-[10px] text-lab-text-muted">
+                      Synced {formatDistanceToNow(new Date(notionStatus.last_sync))}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="flex items-center gap-1 text-[10px] text-red-400">
+                  <span className="w-1.5 h-1.5 bg-red-400 rounded-full" /> Not connected
                 </span>
               )}
             </div>
-            <button
-              onClick={async () => {
-                setNotionSyncing(true)
-                try {
-                  const result = await syncNotion()
-                  setNotionTasks(result.tasks || [])
-                  const status = await getNotionStatus().catch(() => null)
-                  if (status) setNotionStatus(status)
-                } catch {} finally { setNotionSyncing(false) }
-              }}
-              disabled={notionSyncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={notionSyncing ? 'animate-spin' : ''} />
-              {notionSyncing ? 'Syncing...' : 'Sync Now'}
-            </button>
+            {notionStatus.connected && (
+              <button
+                onClick={async () => {
+                  setNotionSyncing(true)
+                  try {
+                    const result = await syncNotion()
+                    setNotionTasks(result.tasks || [])
+                    const status = await getNotionStatus().catch(() => null)
+                    if (status) setNotionStatus(status)
+                  } catch {} finally { setNotionSyncing(false) }
+                }}
+                disabled={notionSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={notionSyncing ? 'animate-spin' : ''} />
+                {notionSyncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+            )}
           </div>
 
-          {notionTasks.length === 0 ? (
+          {!notionStatus.connected ? (
+            <div className="card p-4">
+              <p className="text-xs text-lab-text-secondary mb-2">{notionStatus.reason}</p>
+              <p className="text-[10px] text-lab-text-muted">To connect: Open Agent Ops in Notion → "..." menu → Connections → Connect to "The Lab"</p>
+            </div>
+          ) : notionTasks.length === 0 ? (
             <div className="card text-center py-6">
               <p className="text-sm text-lab-text-faint">No new tasks in Notion. Click Sync to check.</p>
             </div>
