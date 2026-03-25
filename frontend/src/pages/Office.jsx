@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls } from '@react-three/drei'
 import { getAgents } from '../lib/api'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { useOfficeCamera } from '../components/office/useOfficeCamera'
-import { OfficeZone } from '../components/office/OfficeZone'
-import { AgentDesk } from '../components/office/AgentDesk'
+import { OfficeFloor, DESK_POSITIONS } from '../components/office/OfficeFloor'
+import { AgentCharacter } from '../components/office/AgentCharacter'
 import { AgentPopup } from '../components/office/AgentPopup'
 
 const AGENT_COLORS = {
@@ -12,37 +12,6 @@ const AGENT_COLORS = {
   Quill: '#c4682d',
   Forge: '#7c5bbf',
   Radar: '#1d8fa0',
-}
-
-// Home desk positions within work zone (spaced for 180x110 desks)
-const HOME_POSITIONS = [
-  { left: 20, top: 30 },
-  { left: 250, top: 30 },
-  { left: 20, top: 185 },
-  { left: 250, top: 185 },
-]
-
-// Visitor positions per zone
-const ZONE_VISITOR_POS = {
-  meeting: [
-    { left: 60, top: 40 },
-    { left: 220, top: 40 },
-    { left: 60, top: 170 },
-    { left: 220, top: 170 },
-  ],
-  boss: [
-    { left: 50, top: 30 },
-    { left: 210, top: 30 },
-  ],
-  notion: [
-    { left: 60, top: 30 },
-    { left: 210, top: 30 },
-  ],
-  server: [
-    { left: 120, top: 20 },
-    { left: 320, top: 20 },
-    { left: 520, top: 20 },
-  ],
 }
 
 function getAgentZone(agent) {
@@ -55,12 +24,21 @@ function getAgentZone(agent) {
   return 'work'
 }
 
+function getCharacterPosition(agent, idx, zone) {
+  const positions = DESK_POSITIONS[zone]
+  if (!positions) return [0, 0, 0]
+  // For work zone, use home desk. For other zones, use visitor slots.
+  const slotIdx = zone === 'work' ? idx : 0
+  const deskPos = positions[slotIdx % positions.length]
+  // Place character next to desk (offset to the side)
+  return [deskPos[0] + 0.7, 0, deskPos[2] + 0.5]
+}
+
 export function Office() {
   const [agents, setAgents] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedAgent, setSelectedAgent] = useState(null)
   const { events } = useWebSocket()
-  const { zoom, panX, panY, isDragging, reset, viewportRef, wasDragging, handlers } = useOfficeCamera()
 
   useEffect(() => { loadAgents() }, [])
 
@@ -75,7 +53,6 @@ export function Office() {
               : a
           )
         )
-        // Update selected agent if it's the one that changed
         setSelectedAgent(prev =>
           prev?.id === lastEvent.agent_id
             ? { ...prev, status: lastEvent.status || prev.status, current_task: lastEvent.current_task ?? prev.current_task }
@@ -93,22 +70,16 @@ export function Office() {
     } catch {} finally { setIsLoading(false) }
   }
 
-  // Compute zones for each agent
+  // Compute zones and track visitor slot counters
+  const zoneSlotCounters = {}
   const agentZones = {}
   agents.forEach((agent, idx) => {
-    agentZones[agent.id] = { zone: getAgentZone(agent), homeIdx: idx }
+    const zone = getAgentZone(agent)
+    const slot = zone !== 'work' ? (zoneSlotCounters[zone] = (zoneSlotCounters[zone] || 0) + 1) - 1 : idx
+    agentZones[agent.id] = { zone, slot }
   })
 
   const activeCount = agents.filter(a => a.status === 'working').length
-  const zoomPct = Math.round(zoom * 100)
-
-  const handleAgentClick = (agent) => {
-    if (isDragging || wasDragging()) return
-    setSelectedAgent(prev => prev?.id === agent.id ? null : agent)
-  }
-
-  // Track visitor slot assignment per zone
-  const zoneSlotCounters = {}
 
   return (
     <div className="h-[calc(100vh-80px)] relative overflow-hidden select-none bg-[#08080e]">
@@ -132,216 +103,62 @@ export function Office() {
             {activeCount} ACTIVE
           </span>
         </div>
-
-        {/* Camera controls */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
-          style={{
-            background: 'rgba(10,10,16,0.85)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}>
-          <button onClick={() => reset()} className="p-1 rounded hover:bg-white/[0.06] transition-colors" title="Reset view">
-            <RotateCcw size={12} className="text-white/30" />
-          </button>
-          <span className="text-[9px] text-white/30 w-8 text-center"
-            style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-            {zoomPct}%
-          </span>
-        </div>
       </div>
 
-      {/* Viewport (captures mouse events for camera) */}
-      <div
-        ref={viewportRef}
-        className="absolute inset-0"
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
-        {...handlers}
+      {/* Three.js Canvas */}
+      <Canvas
+        shadows
+        camera={{ position: [14, 12, 14], fov: 42 }}
+        onPointerMissed={() => setSelectedAgent(null)}
+        style={{ background: '#08080e' }}
       >
-        {/* Camera rig (pan + zoom, outside isometric rotation) */}
-        <div
-          className="absolute inset-0 flex items-center justify-center"
-          style={{
-            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
-            transition: isDragging ? 'none' : 'transform 0.08s ease-out',
-            willChange: 'transform',
-          }}
-        >
-          {/* Isometric transform */}
-          <div
-            className="relative"
-            style={{
-              transform: 'rotateX(55deg) rotateZ(-45deg)',
-              transformStyle: 'preserve-3d',
-            }}
-          >
-            {/* Main floor */}
-            <div
-              className="relative"
-              style={{
-                width: 1100,
-                height: 820,
-                background: 'linear-gradient(135deg, #0e0e16 0%, #0a0a10 100%)',
-                borderRadius: 10,
-                boxShadow: '0 60px 120px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02)',
-                backgroundImage: 'linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)',
-                backgroundSize: '50px 50px',
-              }}
-            >
-              {/* Floor label */}
-              <div
-                className="absolute"
-                style={{
-                  top: 16, left: 24,
-                  transform: 'rotateZ(45deg) rotateX(-55deg) translateZ(2px)',
-                  transformStyle: 'preserve-3d',
-                }}
-              >
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: '0.35em',
-                  color: 'rgba(255,255,255,0.06)',
-                  fontFamily: '"JetBrains Mono", "SF Mono", monospace',
-                  textTransform: 'uppercase',
-                }}>
-                  The Lab HQ
-                </span>
-              </div>
+        <ambientLight intensity={0.35} />
+        <directionalLight
+          position={[8, 14, 6]}
+          intensity={0.7}
+          castShadow
+          shadow-mapSize={[1024, 1024]}
+          shadow-camera-far={40}
+          shadow-camera-left={-12}
+          shadow-camera-right={12}
+          shadow-camera-top={12}
+          shadow-camera-bottom={-12}
+        />
+        <directionalLight position={[-6, 8, -4]} intensity={0.15} />
+        <hemisphereLight args={['#1a1a3e', '#0a0a14', 0.2]} />
 
-              {/* === ZONES === */}
+        <OrbitControls
+          target={[0, 0, 2]}
+          maxPolarAngle={Math.PI / 2.2}
+          minPolarAngle={0.3}
+          minDistance={5}
+          maxDistance={28}
+          enableDamping
+          dampingFactor={0.05}
+        />
 
-              {/* Work Area — top left */}
-              <OfficeZone
-                type="work"
-                style={{ left: 40, top: 40, width: 500, height: 360 }}
-              >
-                {agents.map((agent, idx) => {
-                  const zone = agentZones[agent.id]?.zone
-                  const pos = HOME_POSITIONS[idx] || { left: 30 + (idx % 2) * 190, top: 40 + Math.floor(idx / 2) * 140 }
-                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-                  const isDimmed = zone !== 'work'
+        <OfficeFloor agents={agents} agentZones={agentZones} agentColors={AGENT_COLORS} />
 
-                  return (
-                    <AgentDesk
-                      key={agent.id}
-                      agent={agent}
-                      color={color}
-                      isSelected={selectedAgent?.id === agent.id}
-                      onClick={() => handleAgentClick(agent)}
-                      style={{ left: pos.left, top: pos.top }}
-                      dimmed={isDimmed}
-                    />
-                  )
-                })}
-              </OfficeZone>
+        {agents.map((agent, idx) => {
+          const { zone, slot } = agentZones[agent.id] || { zone: 'work', slot: idx }
+          const pos = getCharacterPosition(agent, zone === 'work' ? idx : slot, zone)
+          const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
 
-              {/* Meeting Room — top right */}
-              <OfficeZone
-                type="meeting"
-                style={{ left: 560, top: 40, width: 480, height: 340 }}
-              >
-                {agents.map((agent, idx) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'meeting') return null
-                  if (!zoneSlotCounters.meeting) zoneSlotCounters.meeting = 0
-                  const slot = zoneSlotCounters.meeting++
-                  const vPos = ZONE_VISITOR_POS.meeting[slot % ZONE_VISITOR_POS.meeting.length]
-                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
+          return (
+            <AgentCharacter
+              key={agent.id}
+              agent={agent}
+              color={color}
+              position={pos}
+              onClick={(a) => setSelectedAgent(prev => prev?.id === a.id ? null : a)}
+            />
+          )
+        })}
 
-                  return (
-                    <AgentDesk
-                      key={`meeting-${agent.id}`}
-                      agent={agent}
-                      color={color}
-                      isSelected={selectedAgent?.id === agent.id}
-                      onClick={() => handleAgentClick(agent)}
-                      style={{ left: vPos.left, top: vPos.top }}
-                    />
-                  )
-                })}
-              </OfficeZone>
+        <fog attach="fog" args={['#08080e', 18, 35]} />
+      </Canvas>
 
-              {/* Boss Office — bottom left */}
-              <OfficeZone
-                type="boss"
-                style={{ left: 40, top: 420, width: 460, height: 190 }}
-              >
-                {agents.map((agent) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'boss') return null
-                  if (!zoneSlotCounters.boss) zoneSlotCounters.boss = 0
-                  const slot = zoneSlotCounters.boss++
-                  const vPos = ZONE_VISITOR_POS.boss[slot % ZONE_VISITOR_POS.boss.length]
-                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-
-                  return (
-                    <AgentDesk
-                      key={`boss-${agent.id}`}
-                      agent={agent}
-                      color={color}
-                      isSelected={selectedAgent?.id === agent.id}
-                      onClick={() => handleAgentClick(agent)}
-                      style={{ left: vPos.left, top: vPos.top }}
-                    />
-                  )
-                })}
-              </OfficeZone>
-
-              {/* Notion Outbox — bottom right */}
-              <OfficeZone
-                type="notion"
-                style={{ left: 560, top: 420, width: 480, height: 190 }}
-              >
-                {agents.map((agent) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'notion') return null
-                  if (!zoneSlotCounters.notion) zoneSlotCounters.notion = 0
-                  const slot = zoneSlotCounters.notion++
-                  const vPos = ZONE_VISITOR_POS.notion[slot % ZONE_VISITOR_POS.notion.length]
-                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-
-                  return (
-                    <AgentDesk
-                      key={`notion-${agent.id}`}
-                      agent={agent}
-                      color={color}
-                      isSelected={selectedAgent?.id === agent.id}
-                      onClick={() => handleAgentClick(agent)}
-                      style={{ left: vPos.left, top: vPos.top }}
-                    />
-                  )
-                })}
-              </OfficeZone>
-
-              {/* Server Room — bottom */}
-              <OfficeZone
-                type="server"
-                style={{ left: 40, top: 650, width: 1000, height: 130 }}
-              >
-                {agents.map((agent) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'server') return null
-                  if (!zoneSlotCounters.server) zoneSlotCounters.server = 0
-                  const slot = zoneSlotCounters.server++
-                  const vPos = ZONE_VISITOR_POS.server[slot % ZONE_VISITOR_POS.server.length]
-                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-
-                  return (
-                    <AgentDesk
-                      key={`server-${agent.id}`}
-                      agent={agent}
-                      color={color}
-                      isSelected={selectedAgent?.id === agent.id}
-                      onClick={() => handleAgentClick(agent)}
-                      style={{ left: vPos.left, top: vPos.top }}
-                    />
-                  )
-                })}
-              </OfficeZone>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Agent detail popup */}
+      {/* Agent detail popup (HTML overlay) */}
       <AgentPopup
         agent={selectedAgent}
         color={AGENT_COLORS[selectedAgent?.name] || selectedAgent?.avatar_color || '#666'}

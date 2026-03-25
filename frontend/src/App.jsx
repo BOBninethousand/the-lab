@@ -1,9 +1,11 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Agents } from './pages/Agents'
-import { Office } from './pages/Office'
 import { Calendar } from './pages/Calendar'
+
+const Office = lazy(() => import('./pages/Office').then(m => ({ default: m.Office })))
 import { Memory } from './pages/Memory'
 import { Documents } from './pages/Documents'
 import { Teams } from './pages/Teams'
@@ -18,7 +20,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/agents" element={<Agents />} />
-          <Route path="/office" element={<Office />} />
+          <Route path="/office" element={<Suspense fallback={<div className="flex items-center justify-center h-full text-white/30 text-sm">Loading 3D Office...</div>}><Office /></Suspense>} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/memory" element={<Memory />} />
           <Route path="/documents" element={<Documents />} />
