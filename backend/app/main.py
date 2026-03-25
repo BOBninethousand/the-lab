@@ -68,10 +68,10 @@ agent_manager.memory_engine = {
 
 # Wire correction manager into scheduler for feedback → correction pipeline
 scheduler_manager.correction_manager = correction_manager
-scheduler_manager.notion_bridge = notion_bridge
 
 # Notion integration
 notion_bridge = NotionBridge()
+scheduler_manager.notion_bridge = notion_bridge
 
 
 @asynccontextmanager
