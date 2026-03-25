@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { getAgents } from '../lib/api'
@@ -6,6 +6,14 @@ import { useWebSocket } from '../hooks/useWebSocket'
 import { OfficeFloor, DESK_POSITIONS } from '../components/office/OfficeFloor'
 import { AgentCharacter } from '../components/office/AgentCharacter'
 import { AgentPopup } from '../components/office/AgentPopup'
+import { OfficeCss } from './OfficeCss'
+
+function hasWebGL() {
+  try {
+    const canvas = document.createElement('canvas')
+    return !!(canvas.getContext('webgl2') || canvas.getContext('webgl'))
+  } catch { return false }
+}
 
 const AGENT_COLORS = {
   Scout: '#3b6fcc',
@@ -35,6 +43,14 @@ function getCharacterPosition(agent, idx, zone) {
 }
 
 export function Office() {
+  const webglSupported = useMemo(() => hasWebGL(), [])
+
+  if (!webglSupported) return <OfficeCss />
+
+  return <Office3D />
+}
+
+function Office3D() {
   const [agents, setAgents] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedAgent, setSelectedAgent] = useState(null)
