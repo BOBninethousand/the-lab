@@ -14,12 +14,12 @@ const AGENT_COLORS = {
   Radar: '#1d8fa0',
 }
 
-// Home desk positions within work zone
+// Home desk positions within work zone (spaced for 180x110 desks)
 const HOME_POSITIONS = [
-  { left: 30, top: 40 },
-  { left: 220, top: 40 },
-  { left: 30, top: 180 },
-  { left: 220, top: 180 },
+  { left: 20, top: 30 },
+  { left: 250, top: 30 },
+  { left: 20, top: 185 },
+  { left: 250, top: 185 },
 ]
 
 // Visitor positions per zone
@@ -211,7 +211,7 @@ export function Office() {
               {/* Work Area — top left */}
               <OfficeZone
                 type="work"
-                style={{ left: 40, top: 40, width: 460, height: 340 }}
+                style={{ left: 40, top: 40, width: 500, height: 360 }}
               >
                 {agents.map((agent, idx) => {
                   const zone = agentZones[agent.id]?.zone

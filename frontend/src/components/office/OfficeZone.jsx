@@ -1,33 +1,33 @@
 const ZONE_CONFIGS = {
   work: {
     label: 'WORK AREA',
-    tint: 'rgba(59,111,204,0.04)',
-    border: 'rgba(59,111,204,0.12)',
-    glow: 'rgba(59,111,204,0.06)',
+    tint: 'rgba(59,111,204,0.06)',
+    border: 'rgba(59,111,204,0.20)',
+    glow: 'rgba(59,111,204,0.10)',
   },
   meeting: {
     label: 'MEETING ROOM',
-    tint: 'rgba(245,158,11,0.04)',
-    border: 'rgba(245,158,11,0.12)',
-    glow: 'rgba(245,158,11,0.06)',
+    tint: 'rgba(245,158,11,0.06)',
+    border: 'rgba(245,158,11,0.20)',
+    glow: 'rgba(245,158,11,0.10)',
   },
   boss: {
     label: 'BOSS OFFICE',
-    tint: 'rgba(139,92,246,0.05)',
-    border: 'rgba(139,92,246,0.15)',
-    glow: 'rgba(139,92,246,0.08)',
+    tint: 'rgba(139,92,246,0.07)',
+    border: 'rgba(139,92,246,0.22)',
+    glow: 'rgba(139,92,246,0.12)',
   },
   notion: {
     label: 'NOTION OUTBOX',
-    tint: 'rgba(16,185,129,0.04)',
-    border: 'rgba(16,185,129,0.12)',
-    glow: 'rgba(16,185,129,0.06)',
+    tint: 'rgba(16,185,129,0.06)',
+    border: 'rgba(16,185,129,0.20)',
+    glow: 'rgba(16,185,129,0.10)',
   },
   server: {
     label: 'SERVER ROOM',
-    tint: 'rgba(6,182,212,0.04)',
-    border: 'rgba(6,182,212,0.10)',
-    glow: 'rgba(6,182,212,0.05)',
+    tint: 'rgba(6,182,212,0.06)',
+    border: 'rgba(6,182,212,0.18)',
+    glow: 'rgba(6,182,212,0.10)',
   },
 }
 
@@ -36,20 +36,20 @@ function MeetingTable() {
     <div className="absolute" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', transformStyle: 'preserve-3d' }}>
       {/* Round table */}
       <div style={{
-        width: 80, height: 80, borderRadius: '50%',
+        width: 100, height: 100, borderRadius: '50%',
         background: 'linear-gradient(135deg, #1e1a28 0%, #16131e 100%)',
-        border: '1px solid rgba(245,158,11,0.15)',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)',
+        border: '1.5px solid rgba(245,158,11,0.25)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)',
         transform: 'translateZ(20px)',
       }} />
       {/* Chairs */}
       {[0, 90, 180, 270].map(angle => (
         <div key={angle} className="absolute" style={{
-          width: 16, height: 16, borderRadius: '50%',
+          width: 22, height: 22, borderRadius: '50%',
           background: 'linear-gradient(135deg, #1a1824 0%, #121018 100%)',
-          border: '1px solid rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.08)',
           left: '50%', top: '50%',
-          transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-54px) translateZ(12px)`,
+          transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-66px) translateZ(12px)`,
         }} />
       ))}
     </div>
@@ -61,25 +61,25 @@ function BossDesk() {
     <div className="absolute" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', transformStyle: 'preserve-3d' }}>
       {/* L-shaped desk */}
       <div style={{
-        width: 160, height: 50,
+        width: 200, height: 60,
         background: 'linear-gradient(135deg, #1e1830 0%, #151020 100%)',
-        borderRadius: 4,
-        border: '1px solid rgba(139,92,246,0.2)',
-        boxShadow: '0 0 20px rgba(139,92,246,0.06), 0 6px 20px rgba(0,0,0,0.4)',
+        borderRadius: 5,
+        border: '1.5px solid rgba(139,92,246,0.3)',
+        boxShadow: '0 0 24px rgba(139,92,246,0.10), 0 6px 20px rgba(0,0,0,0.5)',
         transform: 'translateZ(28px)',
       }}>
         {/* Command monitors */}
-        <div className="flex gap-1 justify-center pt-1.5">
+        <div className="flex gap-1.5 justify-center pt-2">
           {[0, 1, 2].map(i => (
             <div key={i} style={{
-              width: 22, height: 14, borderRadius: 2,
+              width: 28, height: 18, borderRadius: 2,
               background: '#0a0814',
-              border: '1px solid rgba(139,92,246,0.15)',
-              boxShadow: '0 0 4px rgba(139,92,246,0.08)',
+              border: '1px solid rgba(139,92,246,0.25)',
+              boxShadow: '0 0 6px rgba(139,92,246,0.12)',
             }}>
-              <div className="mt-[3px] mx-[3px] space-y-[2px]">
-                <div style={{ height: 1, width: '70%', background: 'rgba(139,92,246,0.25)', borderRadius: 1 }} />
-                <div style={{ height: 1, width: '50%', background: 'rgba(139,92,246,0.15)', borderRadius: 1 }} />
+              <div className="mt-1 mx-1 space-y-[3px]">
+                <div style={{ height: 2, width: '70%', background: 'rgba(139,92,246,0.35)', borderRadius: 1 }} />
+                <div style={{ height: 1, width: '50%', background: 'rgba(139,92,246,0.20)', borderRadius: 1 }} />
               </div>
             </div>
           ))}
@@ -87,10 +87,10 @@ function BossDesk() {
       </div>
       {/* Boss chair */}
       <div style={{
-        position: 'absolute', bottom: -28, left: '50%', transform: 'translateX(-50%) translateZ(14px)',
-        width: 28, height: 24, borderRadius: '50% 50% 30% 30%',
+        position: 'absolute', bottom: -32, left: '50%', transform: 'translateX(-50%) translateZ(14px)',
+        width: 34, height: 28, borderRadius: '50% 50% 30% 30%',
         background: 'linear-gradient(135deg, #201838 0%, #160e28 100%)',
-        border: '1px solid rgba(139,92,246,0.2)',
+        border: '1.5px solid rgba(139,92,246,0.25)',
       }} />
     </div>
   )
@@ -101,25 +101,25 @@ function FilingCabinet() {
     <div className="absolute" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', transformStyle: 'preserve-3d' }}>
       {/* Cabinet stack */}
       <div className="flex gap-3 items-end">
-        {[48, 56, 42].map((h, i) => (
+        {[56, 64, 50].map((h, i) => (
           <div key={i} style={{
-            width: 30, height: h, borderRadius: 3,
+            width: 40, height: h, borderRadius: 4,
             background: 'linear-gradient(135deg, #162018 0%, #0e1810 100%)',
-            border: '1px solid rgba(16,185,129,0.15)',
+            border: '1px solid rgba(16,185,129,0.22)',
             transform: 'translateZ(20px)',
-            display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '0 4px',
+            display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5, padding: '0 6px',
           }}>
             {Array.from({ length: Math.floor(h / 14) }).map((_, j) => (
-              <div key={j} style={{ height: 1, background: 'rgba(16,185,129,0.2)', borderRadius: 1 }} />
+              <div key={j} style={{ height: 1.5, background: 'rgba(16,185,129,0.30)', borderRadius: 1 }} />
             ))}
           </div>
         ))}
       </div>
       {/* Outbox tray */}
       <div className="mt-2 mx-auto" style={{
-        width: 50, height: 8, borderRadius: 2,
+        width: 60, height: 10, borderRadius: 3,
         background: 'linear-gradient(135deg, #142018 0%, #0c1610 100%)',
-        border: '1px solid rgba(16,185,129,0.12)',
+        border: '1px solid rgba(16,185,129,0.20)',
         transform: 'translateZ(24px)',
       }} />
     </div>
@@ -128,26 +128,26 @@ function FilingCabinet() {
 
 function ServerRacks() {
   return (
-    <div className="absolute inset-0 flex items-center justify-center gap-4" style={{ transformStyle: 'preserve-3d' }}>
+    <div className="absolute inset-0 flex items-center justify-center gap-5" style={{ transformStyle: 'preserve-3d' }}>
       {[0, 1, 2, 3, 4].map(i => (
         <div key={i} style={{
-          width: 24, height: 52, borderRadius: 3,
+          width: 30, height: 64, borderRadius: 4,
           background: 'linear-gradient(180deg, #0c1418 0%, #080e12 100%)',
-          border: '1px solid rgba(6,182,212,0.12)',
+          border: '1px solid rgba(6,182,212,0.18)',
           transform: 'translateZ(20px)',
-          display: 'flex', flexDirection: 'column', gap: 3, padding: '6px 3px',
+          display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 4px',
         }}>
           {[0, 1, 2, 3].map(j => (
-            <div key={j} className="flex items-center gap-[2px]">
+            <div key={j} className="flex items-center gap-[3px]">
               <div
                 className={j === 0 && i < 3 ? 'animate-pulse' : ''}
                 style={{
-                  width: 3, height: 3, borderRadius: '50%',
-                  background: j === 0 ? (i < 3 ? '#06b6d4' : '#6b7280') : 'rgba(6,182,212,0.15)',
-                  boxShadow: j === 0 && i < 3 ? '0 0 4px rgba(6,182,212,0.5)' : 'none',
+                  width: 4, height: 4, borderRadius: '50%',
+                  background: j === 0 ? (i < 3 ? '#06b6d4' : '#6b7280') : 'rgba(6,182,212,0.20)',
+                  boxShadow: j === 0 && i < 3 ? '0 0 6px rgba(6,182,212,0.6)' : 'none',
                 }}
               />
-              <div style={{ flex: 1, height: 1, background: 'rgba(6,182,212,0.08)', borderRadius: 1 }} />
+              <div style={{ flex: 1, height: 1.5, background: 'rgba(6,182,212,0.12)', borderRadius: 1 }} />
             </div>
           ))}
         </div>
@@ -175,7 +175,7 @@ export function OfficeZone({ type, style, children }) {
         background: config.tint,
         borderRadius: 8,
         border: `1px solid ${config.border}`,
-        boxShadow: `0 0 30px ${config.glow}, inset 0 1px 0 rgba(255,255,255,0.02)`,
+        boxShadow: `0 0 40px ${config.glow}, inset 0 1px 0 rgba(255,255,255,0.03)`,
         transformStyle: 'preserve-3d',
       }}
     >
@@ -183,14 +183,14 @@ export function OfficeZone({ type, style, children }) {
       <div
         className="absolute"
         style={{
-          top: 10, left: 14,
+          top: 12, left: 16,
           transform: 'rotateZ(45deg) rotateX(-55deg) translateZ(4px)',
           transformStyle: 'preserve-3d',
         }}
       >
         <span style={{
-          fontSize: 8, fontWeight: 700, letterSpacing: '0.2em',
-          color: config.border.replace(/[\d.]+\)$/, '0.5)'),
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.2em',
+          color: config.border.replace(/[\d.]+\)$/, '0.7)'),
           fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
           textTransform: 'uppercase',
         }}>
