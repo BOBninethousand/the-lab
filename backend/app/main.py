@@ -38,6 +38,7 @@ from app.memory_engine import (
     build_context,
     get_memory_stats,
 )
+from app.notion_bridge import NotionBridge
 
 # Initialize managers
 agent_manager = AgentManager()
@@ -67,6 +68,9 @@ agent_manager.memory_engine = {
 
 # Wire correction manager into scheduler for feedback → correction pipeline
 scheduler_manager.correction_manager = correction_manager
+
+# Notion integration
+notion_bridge = NotionBridge()
 
 
 @asynccontextmanager
@@ -705,6 +709,106 @@ async def openclaw_update_settings(data: dict):
     await openclaw_bridge.disconnect()
     await openclaw_bridge.connect()
     return await openclaw_bridge.get_status()
+
+
+# --- NOTION ENDPOINTS ---
+@app.get("/api/notion/status")
+async def notion_status():
+    status = await notion_bridge.check_connection()
+    status["last_sync"] = notion_bridge.last_sync
+    status["cached_task_count"] = len(notion_bridge.get_cached_tasks())
+    return status
+
+
+@app.post("/api/notion/sync")
+async def notion_sync():
+    tasks = await notion_bridge.pull_new_tasks()
+    return {"synced": len(tasks), "tasks": tasks}
+
+
+@app.get("/api/notion/tasks")
+async def notion_tasks():
+    return notion_bridge.get_cached_tasks()
+
+
+@app.post("/api/notion/tasks/{page_id}/run")
+async def notion_run_task(page_id: str, data: dict):
+    agent_id = data.get("agent_id")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agent_id required")
+
+    agent = agent_manager.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Find task in cache for context
+    task = next((t for t in notion_bridge.get_cached_tasks() if t["notion_page_id"] == page_id), None)
+    prompt = ""
+    if task:
+        prompt = task["title"]
+        if task.get("handoff_notes"):
+            prompt += f"\n\nContext: {task['handoff_notes']}"
+    else:
+        prompt = data.get("prompt", "Execute this task")
+
+    # Update Notion status to Working
+    await notion_bridge.set_status(page_id, "Working")
+
+    # Update Lab agent status
+    agent_manager.update_status(agent_id, "working", f"Notion task: {prompt[:50]}")
+    await ws_manager.broadcast("agent_status", {**agent.model_dump(mode="json"), "status": "working", "current_task": f"Notion task: {prompt[:50]}"})
+
+    try:
+        response = await agent_manager.chat_async(agent_id, prompt)
+
+        # Check for error responses
+        if response.startswith("Error:") or response.startswith("Configuration Error:"):
+            await notion_bridge.set_status(page_id, "Blocked", blockers=response)
+            agent_manager.update_status(agent_id, "error", response[:100])
+            raise HTTPException(status_code=500, detail=response)
+
+        # Push result back to Notion
+        await notion_bridge.push_result(page_id, response, agent_name=agent.name)
+
+        agent_manager.update_status(agent_id, "idle", None)
+        await ws_manager.broadcast("agent_status", {**agent.model_dump(mode="json"), "status": "idle", "current_task": None})
+
+        return {
+            "status": "completed",
+            "notion_page_id": page_id,
+            "agent_name": agent.name,
+            "result_preview": response[:300],
+            "pushed_to_notion": True,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await notion_bridge.set_status(page_id, "Blocked", blockers=str(e))
+        agent_manager.update_status(agent_id, "error", str(e)[:100])
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/notion/push-result")
+async def notion_push_result(data: dict):
+    page_id = data.get("page_id")
+    result = data.get("result", "")
+    agent_name = data.get("agent_name")
+    status = data.get("status", "Done")
+    if not page_id or not result:
+        raise HTTPException(status_code=400, detail="page_id and result required")
+    success = await notion_bridge.push_result(page_id, result, agent_name, status)
+    return {"pushed": success}
+
+
+@app.post("/api/notion/sync-knowledge")
+async def notion_sync_knowledge(data: dict):
+    page_id = data.get("page_id")
+    if not page_id:
+        raise HTTPException(status_code=400, detail="page_id required")
+    result = await notion_bridge.sync_page_to_knowledge(page_id, knowledge_manager)
+    if not result:
+        raise HTTPException(status_code=404, detail="Page not found")
+    return result
 
 
 # --- STATIC FILES (serve frontend) ---

@@ -268,3 +268,34 @@ export async function getCorrectionRules(agentId) {
 export async function getMemoryStats() {
   return api('/api/memory/stats')
 }
+
+// Notion Integration
+export async function getNotionStatus() {
+  return api('/api/notion/status')
+}
+
+export async function syncNotion() {
+  return api('/api/notion/sync', { method: 'POST' })
+}
+
+export async function getNotionTasks() {
+  return api('/api/notion/tasks')
+}
+
+export async function runNotionTask(pageId, agentId) {
+  return api(`/api/notion/tasks/${pageId}/run`, {
+    method: 'POST', body: JSON.stringify({ agent_id: agentId })
+  })
+}
+
+export async function pushNotionResult(pageId, result, agentName) {
+  return api('/api/notion/push-result', {
+    method: 'POST', body: JSON.stringify({ page_id: pageId, result, agent_name: agentName })
+  })
+}
+
+export async function syncNotionKnowledge(pageId) {
+  return api('/api/notion/sync-knowledge', {
+    method: 'POST', body: JSON.stringify({ page_id: pageId })
+  })
+}
