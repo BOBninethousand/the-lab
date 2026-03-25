@@ -406,11 +406,25 @@ class AgentManager:
                 except Exception:
                     return ""
 
-            asyncio.create_task(
-                agent_mem_mgr.extract_from_chat(
-                    agent_id, user_msg, assistant_msg, _llm_for_extraction
-                )
-            )
+            # Schedule on the main event loop from thread pool context
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.call_soon_threadsafe(
+                        asyncio.ensure_future,
+                        agent_mem_mgr.extract_from_chat(
+                            agent_id, user_msg, assistant_msg, _llm_for_extraction
+                        ),
+                    )
+                else:
+                    asyncio.create_task(
+                        agent_mem_mgr.extract_from_chat(
+                            agent_id, user_msg, assistant_msg, _llm_for_extraction
+                        )
+                    )
+            except RuntimeError:
+                # No event loop at all — skip
+                pass
         except Exception as e:
             logger.warning(f"Failed to trigger memory extraction: {e}")
 

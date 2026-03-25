@@ -422,6 +422,39 @@ async def memory_stats():
     return get_memory_stats(knowledge_manager, agent_memory_manager, correction_manager).model_dump(mode="json")
 
 
+@app.post("/api/memory/compress")
+async def compress_memories(data: dict = {}):
+    """Compress old memories into weekly digests. Call weekly via n8n or manually."""
+    days_threshold = data.get("days", 7)
+    results = {}
+    for agent_dir in agent_memory_manager.agents_with_memory():
+        memories = agent_memory_manager.get_for_agent(agent_dir)
+        old_memories = [
+            m for m in memories
+            if (datetime.now() - datetime.fromisoformat(str(m.created_at))).days > days_threshold
+        ]
+        if len(old_memories) < 3:
+            results[agent_dir] = {"compressed": 0, "reason": "not enough old memories"}
+            continue
+
+        # Summarize old memories into one digest
+        combined = "\n".join(f"- [{m.memory_type}] {m.content}" for m in old_memories[:20])
+        digest_content = f"Weekly memory digest ({len(old_memories)} memories compressed):\n{combined[:1500]}"
+
+        # Save digest as a single memory
+        await agent_memory_manager.add(
+            agent_dir, digest_content, "learning", ["weekly-digest"]
+        )
+
+        # Delete the old individual memories
+        for m in old_memories:
+            agent_memory_manager.delete(agent_dir, m.id)
+
+        results[agent_dir] = {"compressed": len(old_memories), "digest_created": True}
+
+    return results
+
+
 # --- DOCUMENT ENDPOINTS ---
 @app.get("/api/documents")
 async def list_documents():

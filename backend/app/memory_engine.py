@@ -128,6 +128,17 @@ class AgentMemoryManager:
         source_chat_id: Optional[str] = None,
     ) -> AgentMemoryEntry:
         embedding = await self.embedding.embed_text(content)
+
+        # Deduplication: skip if a very similar memory already exists
+        if embedding:
+            existing = self.get_for_agent(agent_id)
+            for mem in existing:
+                if mem.embedding:
+                    sim = self.embedding.cosine_similarity(embedding, mem.embedding)
+                    if sim > 0.85:
+                        logger.debug(f"Skipping duplicate memory for {agent_id}: {content[:60]}...")
+                        return mem
+
         entry = AgentMemoryEntry(
             id=str(uuid.uuid4()),
             agent_id=agent_id,
