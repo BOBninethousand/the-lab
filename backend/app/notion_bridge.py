@@ -476,6 +476,9 @@ class NotionBridge:
         if not self.configured:
             return None
         try:
+            # Make title unique with date
+            dated_title = f"{title} — {datetime.now().strftime('%d %b')}"
+
             # Get or create per-agent database
             db_id = await self._get_or_create_agent_db(agent_name or "General")
 
@@ -501,7 +504,7 @@ class NotionBridge:
                     "parent": {"database_id": db_id},
                     "icon": {"type": "emoji", "emoji": page_emoji},
                     "properties": {
-                        "Title": {"title": [{"text": {"content": title}}]},
+                        "Title": {"title": [{"text": {"content": dated_title}}]},
                         "Type": {"select": {"name": type_label}},
                         "Date": {"date": {"start": datetime.now().strftime("%Y-%m-%d")}},
                         "Source": {"select": {"name": source_label}},
@@ -514,7 +517,7 @@ class NotionBridge:
                     "parent": {"page_id": self.database_id},
                     "icon": {"type": "emoji", "emoji": page_emoji},
                     "properties": {
-                        "title": {"title": [{"text": {"content": title}}]}
+                        "title": {"title": [{"text": {"content": dated_title}}]}
                     },
                     "children": content_blocks,
                 }
