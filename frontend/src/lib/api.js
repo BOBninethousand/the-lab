@@ -216,6 +216,10 @@ export async function generateReport(data) {
   return api('/api/reports/generate', { method: 'POST', body: JSON.stringify(data) })
 }
 
+export async function publishReportToNotion(reportId) {
+  return api(`/api/reports/${reportId}/publish`, { method: 'POST' })
+}
+
 // Knowledge Base
 export async function getKnowledge(params = {}) {
   const query = new URLSearchParams(params).toString()

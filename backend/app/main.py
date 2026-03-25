@@ -447,7 +447,27 @@ async def list_reports(
 async def create_report(data: ReportCreate):
     report = report_manager.create_report(data)
     await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+    # Auto-publish to Notion
+    if notion_bridge.configured:
+        asyncio.create_task(_publish_report_to_notion(report))
     return report.model_dump(mode="json")
+
+
+async def _publish_report_to_notion(report):
+    """Background task to publish a report to Notion."""
+    try:
+        url = await notion_bridge.publish_report(
+            title=report.title,
+            content=report.content,
+            agent_name=report.agent_name,
+            report_type=report.report_type,
+            source=report.source,
+        )
+        if url:
+            report_manager.update_report(report.id, {"notion_page_url": url})
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Notion auto-publish failed: {e}")
 
 
 @app.post("/api/reports/generate")
@@ -518,6 +538,26 @@ async def delete_report(report_id: str):
     if not report_manager.delete_report(report_id):
         raise HTTPException(status_code=404, detail="Report not found")
     return {"status": "deleted"}
+
+
+@app.post("/api/reports/{report_id}/publish")
+async def publish_report_to_notion(report_id: str):
+    report = report_manager.get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if not notion_bridge.configured:
+        raise HTTPException(status_code=400, detail="Notion not configured")
+    url = await notion_bridge.publish_report(
+        title=report.title,
+        content=report.content,
+        agent_name=report.agent_name,
+        report_type=report.report_type,
+        source=report.source,
+    )
+    if not url:
+        raise HTTPException(status_code=500, detail="Failed to publish to Notion")
+    report_manager.update_report(report_id, {"notion_page_url": url})
+    return {"published": True, "notion_page_url": url}
 
 
 # --- SCHEDULE ENDPOINTS ---

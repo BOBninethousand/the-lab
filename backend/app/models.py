@@ -259,4 +259,5 @@ class Report(BaseModel):
     source: str
     starred: bool = False
     read: bool = False
+    notion_page_url: Optional[str] = None
     created_at: datetime

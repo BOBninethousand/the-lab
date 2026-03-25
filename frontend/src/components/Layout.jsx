@@ -21,7 +21,7 @@ const navItems = [
   { label: 'Office', icon: Building2, path: '/office' },
   { label: 'Calendar', icon: CalendarDays, path: '/calendar' },
   { label: 'Memory', icon: Brain, path: '/memory' },
-  { label: 'Documents', icon: FileText, path: '/documents' },
+  { label: 'Notion', icon: FileText, path: '/documents' },
   { label: 'Teams', icon: GitBranch, path: '/teams' },
   { label: 'Usage', icon: Zap, path: '/costs' },
   { label: 'OpenClaw', icon: Plug, path: '/openclaw' },

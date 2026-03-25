@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Star, FileText, Copy, Trash2, X, ChevronDown, Circle } from 'lucide-react'
-import { getReports, getReportStats, updateReport, deleteReport } from '../lib/api'
+import { Search, Star, FileText, Copy, Trash2, X, ChevronDown, Circle, ExternalLink, Upload } from 'lucide-react'
+import { getReports, getReportStats, updateReport, deleteReport, publishReportToNotion, getNotionStatus } from '../lib/api'
 import { formatDistanceToNow } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -68,6 +68,8 @@ export function Documents() {
   const [toast, setToast] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [mobileViewerOpen, setMobileViewerOpen] = useState(false)
+  const [notionStatus, setNotionStatus] = useState(null)
+  const [publishing, setPublishing] = useState(null)
   const { events } = useWebSocket()
   const [searchParams] = useSearchParams()
 
@@ -106,7 +108,28 @@ export function Documents() {
 
   useEffect(() => {
     loadReports(true)
+    getNotionStatus().then(s => setNotionStatus(s)).catch(() => {})
   }, [agentFilter, typeFilter, starredFilter, searchQuery])
+
+  const handlePublish = async (reportId) => {
+    setPublishing(reportId)
+    try {
+      const result = await publishReportToNotion(reportId)
+      if (result.notion_page_url) {
+        setReports(prev => prev.map(r =>
+          r.id === reportId ? { ...r, notion_page_url: result.notion_page_url } : r
+        ))
+        if (selectedReport?.id === reportId) {
+          setSelectedReport(prev => ({ ...prev, notion_page_url: result.notion_page_url }))
+        }
+        setToast('Published to Notion')
+        setTimeout(() => setToast(null), 3000)
+      }
+    } catch (err) {
+      setToast('Failed to publish')
+      setTimeout(() => setToast(null), 3000)
+    } finally { setPublishing(null) }
+  }
 
   // Open report from URL param (e.g. navigated from Dashboard)
   useEffect(() => {
@@ -360,6 +383,13 @@ export function Documents() {
                           <span className="flex-shrink-0 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/[0.06] text-lab-text-muted">
                             {TYPE_LABELS[report.report_type] || report.report_type}
                           </span>
+                          {report.notion_page_url && (
+                            <a href={report.notion_page_url} target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-subtle">
+                              <ExternalLink size={8} /> Notion
+                            </a>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-lab-text-muted">{report.agent_name}</span>
@@ -454,6 +484,22 @@ export function Documents() {
                   <Trash2 size={12} />
                   Delete
                 </button>
+                <div className="flex-1" />
+                {selectedReport.notion_page_url ? (
+                  <a href={selectedReport.notion_page_url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-subtle">
+                    <ExternalLink size={12} /> View in Notion
+                  </a>
+                ) : notionStatus?.connected ? (
+                  <button
+                    onClick={() => handlePublish(selectedReport.id)}
+                    disabled={publishing === selectedReport.id}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-lab-accent bg-lab-accent/10 hover:bg-lab-accent/20 transition-subtle disabled:opacity-50"
+                  >
+                    <Upload size={12} />
+                    {publishing === selectedReport.id ? 'Publishing...' : 'Publish to Notion'}
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>

@@ -281,3 +281,147 @@ class NotionBridge:
             notion_page_id=page_id,
         ))
         return {"id": entry.id, "title": title, "action": "created"}
+
+    # --- Report Publishing ---
+
+    @staticmethod
+    def _markdown_to_notion_blocks(text: str) -> List[dict]:
+        """Convert markdown text to Notion block objects."""
+        import re
+        blocks = []
+        lines = text.split("\n")
+        i = 0
+        while i < len(lines):
+            line = lines[i].rstrip()
+
+            # Skip empty lines
+            if not line:
+                i += 1
+                continue
+
+            # Headings
+            if line.startswith("### "):
+                blocks.append({
+                    "object": "block", "type": "heading_3",
+                    "heading_3": {"rich_text": [{"type": "text", "text": {"content": line[4:].strip()}}]}
+                })
+            elif line.startswith("## "):
+                blocks.append({
+                    "object": "block", "type": "heading_2",
+                    "heading_2": {"rich_text": [{"type": "text", "text": {"content": line[3:].strip()}}]}
+                })
+            elif line.startswith("# "):
+                blocks.append({
+                    "object": "block", "type": "heading_1",
+                    "heading_1": {"rich_text": [{"type": "text", "text": {"content": line[2:].strip()}}]}
+                })
+            # Horizontal rule
+            elif line.strip() in ("---", "***", "___"):
+                blocks.append({"object": "block", "type": "divider", "divider": {}})
+            # Bullet list
+            elif line.lstrip().startswith(("- ", "* ", "+ ")):
+                indent = len(line) - len(line.lstrip())
+                content = line.lstrip()[2:].strip()
+                rich_text = NotionBridge._text_to_rich_text(content)
+                blocks.append({
+                    "object": "block", "type": "bulleted_list_item",
+                    "bulleted_list_item": {"rich_text": rich_text}
+                })
+            # Numbered list
+            elif re.match(r'^\d+\.\s', line.lstrip()):
+                content = re.sub(r'^\d+\.\s', '', line.lstrip()).strip()
+                rich_text = NotionBridge._text_to_rich_text(content)
+                blocks.append({
+                    "object": "block", "type": "numbered_list_item",
+                    "numbered_list_item": {"rich_text": rich_text}
+                })
+            # Regular paragraph
+            else:
+                rich_text = NotionBridge._text_to_rich_text(line)
+                blocks.append({
+                    "object": "block", "type": "paragraph",
+                    "paragraph": {"rich_text": rich_text}
+                })
+
+            i += 1
+
+        # Notion API limits 100 blocks per request
+        return blocks[:100]
+
+    @staticmethod
+    def _text_to_rich_text(text: str) -> List[dict]:
+        """Convert text with **bold** and *italic* markers to Notion rich_text array."""
+        import re
+        parts = []
+        pos = 0
+        # Match **bold** and *italic*
+        for match in re.finditer(r'\*\*(.+?)\*\*|\*(.+?)\*', text):
+            # Add text before match
+            if match.start() > pos:
+                parts.append({"type": "text", "text": {"content": text[pos:match.start()]}})
+            if match.group(1):  # **bold**
+                parts.append({"type": "text", "text": {"content": match.group(1)}, "annotations": {"bold": True}})
+            elif match.group(2):  # *italic*
+                parts.append({"type": "text", "text": {"content": match.group(2)}, "annotations": {"italic": True}})
+            pos = match.end()
+        # Remaining text
+        if pos < len(text):
+            parts.append({"type": "text", "text": {"content": text[pos:]}})
+        if not parts:
+            parts.append({"type": "text", "text": {"content": text}})
+        return parts
+
+    async def publish_report(
+        self,
+        title: str,
+        content: str,
+        agent_name: str = "",
+        report_type: str = "",
+        source: str = "scheduled",
+    ) -> Optional[str]:
+        """Publish a report as a Notion page. Returns the page URL or None."""
+        if not self.configured:
+            return None
+        try:
+            # Build metadata callout
+            meta_text = f"Agent: {agent_name} | Type: {report_type} | Source: {source} | {datetime.now().strftime('%d %b %Y %H:%M')}"
+
+            # Convert content to Notion blocks
+            content_blocks = self._markdown_to_notion_blocks(content)
+
+            # Prepend metadata callout
+            callout_block = {
+                "object": "block", "type": "callout",
+                "callout": {
+                    "rich_text": [{"type": "text", "text": {"content": meta_text}}],
+                    "icon": {"type": "emoji", "emoji": "🤖"},
+                    "color": "blue_background",
+                }
+            }
+            all_blocks = [callout_block] + content_blocks
+
+            # Create page as child of connected page
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{self.BASE_URL}/pages",
+                    headers=self._headers(),
+                    json={
+                        "parent": {"page_id": self.database_id},
+                        "icon": {"type": "emoji", "emoji": "📄"},
+                        "properties": {
+                            "title": {"title": [{"text": {"content": title}}]}
+                        },
+                        "children": all_blocks,
+                    },
+                )
+                if resp.status_code == 200:
+                    page_data = resp.json()
+                    page_url = page_data.get("url", "")
+                    logger.info(f"Published report to Notion: {title} → {page_url}")
+                    return page_url
+                else:
+                    logger.error(f"Notion publish failed: {resp.status_code} {resp.text[:300]}")
+                    return None
+        except Exception as e:
+            logger.error(f"Notion publish error: {e}")
+            return None
