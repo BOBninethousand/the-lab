@@ -18,6 +18,8 @@ Plan next week's content across channels for HealthDataLab:
    - Building in public — honest founder updates
    - Practitioner pain points (finding clients, proving results, creating recurring revenue)
    - The deeper WHY: helping people wake up to their own capability
+   - "Deep roots" — effective longevity connects to identity, not just biochemistry. Holistic practitioners' advantage.
+   - AI disruption of health sector — practitioners who integrate data-driven tools now will lead, not follow
 
 3. REPURPOSING PLAN: How to turn one piece into multiple formats (LinkedIn post > email snippet > blog expansion > Twitter thread).
 

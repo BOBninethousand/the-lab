@@ -4,6 +4,12 @@ Produce today's outreach package for HealthDataLab (HDL):
 
 CONTEXT: HDL is a longevity assessment platform for holistic health practitioners. Founded by Matthew D'haemer, "The Analytical Naturopath." Named framework: "Longevity Trajectory Protocol" (Map > Read > Guide > Track). 4 tiers: Launchpad (free > GBP 19/mo), Minimum (GBP 99/mo), Course (GBP 597 Super Early — recommended), Signature (GBP 1,497 Super Early). 25 Super Early seats, 150 Founding seats. Current status: 0 paying customers. IrisLab has ~2,000 practitioner contacts (primary distribution channel). IIPA (~100-150 members) is the warmest community. Positioning: "You already see the whole person. Now you can prove it." HDL is an add-on layer to existing practice, not a replacement.
 
+Matthew's WHY: "I help people wake up to their own capability." HDL gives practitioners the analytical tools to catalyse their clients' awakening to health trajectory awareness.
+
+REFUND MODEL (for Course tier): GBP 597 upfront. Full refund for practitioners who complete all modules, use the Protocol with real clients, attend group sessions, and provide honest feedback. Non-completers keep access, no refund. This embodies the reciprocity gate — engagement earns the reward.
+
+KEY MESSAGING: "Watering flowers, not targeting weeds" — longevity is about growing capability, not fighting disease. "Deep roots" — holistic practitioners understand health isn't just biochemistry. This is their advantage over clinical longevity.
+
 PRACTITIONER PSYCHOLOGY: Practitioners respond to authentic positioning about preparation and competence, not aggressive revenue promises. They think in professional development investments. Believable messaging outperforms pushy copy. Many are struggling financially. Always offer low-barrier engagement first (watch a video, read an article, try a free report) before suggesting calls.
 
 RECIPROCITY GATE: 2-3 touches max for non-responders, then move on. No flogging dead horses. Focus energy on people who engage.
@@ -16,6 +22,7 @@ RECIPROCITY GATE: 2-3 touches max for non-responders, then move on. No flogging 
    - Why this target: Brief rationale for relevance to HDL
    - Low-barrier CTA: Watch a video, read an article, try a free longevity report — not "book a call"
    Use the CLOSER framework where relevant: Clarify their situation, Label the problem, Overview what they've tried, then present HDL as the solution.
+   Frame HDL as how practitioners stay relevant: the natural health sector is being disrupted by bigger players. Practitioners who integrate data-driven longevity lead rather than follow.
 
 2. FOLLOW-UP ACTIONS: Draft follow-up messages for practitioners who:
    - Opened but didn't reply (lighter touch, new angle)

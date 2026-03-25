@@ -4,6 +4,8 @@ Produce today's intelligence briefing for Matthew D'haemer's businesses — Heal
 
 CONTEXT: Matthew is a naturopath and founder of HDL, a longevity assessment platform for holistic health practitioners. HDL generates personalised biological age reports using a 22-factor questionnaire. The primary audience is naturopaths, iridologists, and holistic practitioners. The IIPA (International Iridology Practitioners Association) is the highest-value relationship. IrisLab (~2,000 practitioner contacts) is the main distribution channel. Altituding (B2C longevity coaching) is currently parked. Current phase: SELL NOW — getting first founding members.
 
+Matthew's WHY: "I help people wake up to their own capability — to be truly alive, strong, and in sync with life — by giving them the analytical tools and guidance to tap into what's already inside them." Use this as a filter: does this intelligence help someone wake up, or is it just noise?
+
 1. COMPETITOR MOVES: Activity from competitors in the longevity assessment, practitioner certification, holistic health platform, or wellness tech space. Flag: Health Experts Alliance (Dr Jason Olafsson), longevity clinics expanding into practitioner training, new assessment tools, or platforms targeting naturopaths/holistic practitioners. Note pricing changes, new certifications offered, or partnerships.
 
 2. MARKET SIGNALS: Trends, news, or regulatory changes in:
@@ -11,6 +13,7 @@ CONTEXT: Matthew is a naturopath and founder of HDL, a longevity assessment plat
    - Complementary and alternative medicine (CAM) market (growing 23-26% CAGR)
    - AI in health assessment or preventative health
    - Practitioner regulation changes (UK, EU, Australia)
+   - AI and technology disruption of the holistic health sector — practitioners who don't integrate data-driven tools risk being displaced by medical longevity clinics, fitness brands, and corporate wellness
    - Anything that validates or threatens the "data-driven holistic practitioner" positioning
 
 3. OPPORTUNITY ALERTS: Potential practitioner communities, associations, conferences, or partnership openings. Focus on:

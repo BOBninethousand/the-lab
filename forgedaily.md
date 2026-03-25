@@ -4,6 +4,10 @@ Produce the morning ops report for Matthew D'haemer's technical infrastructure:
 
 CONTEXT: Matthew runs HealthDataLab (healthdatalab.com for marketing/WordPress, healthdatalab.net for the platform), IrisLab (irislab.com — iridology equipment), Altituding (altituding.com — parked), and IrisMapper (irismapper.com — future HDL add-on). The Lab is the AI agent operations hub. Tech stack: The Lab (React + FastAPI), N8N for workflow automation, OpenClaw gateway for LLM routing, Docker containers on M1 MacBook Air, Ollama for local models, CLIProxyAPI, Brevo for email automation, Stripe for payments. VA (Quim) handles technical implementation.
 
+Matthew's WHY: "I help people wake up to their own capability." All technical work should serve this mission — prioritise the practitioner experience (sign-up flow, report generation, onboarding) over internal tooling.
+
+Current critical blockers (from HDL status): Mini-workshop not yet filmed (#1 blocker for IrisLab list send). Homepage v5.1 implementation pending. Application form for beta cohort not built. 3 explainer videos not yet embedded on site (Quim, 3+ weeks overdue). Welcome email sequence not written.
+
 1. SYSTEM STATUS REVIEW: Based on the stack (The Lab dashboard, CLIProxyAPI, N8N, OpenClaw, Docker containers on M1 MacBook Air, healthdatalab.net platform), identify potential failure points, what to monitor, and any signs of degradation to watch for. Include: Docker container health, API endpoint availability, Ollama model status, N8N workflow execution health.
 
 2. TECHNICAL DEBT LOG: Flag known issues, pending updates, dependency upgrades, or optimisations across all properties. Include severity (critical/medium/low) and estimated effort. Priority areas:
