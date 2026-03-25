@@ -112,11 +112,12 @@ class NotionBridge:
             return ""
 
     async def check_connection(self) -> dict:
-        """Test connection and return database info."""
+        """Test connection — tries as database first, falls back to page."""
         if not self.configured:
             return {"connected": False, "reason": "Not configured — set NOTION_API_KEY and NOTION_DATABASE_ID in .env"}
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
+                # Try as database first
                 resp = await client.get(
                     f"{self.BASE_URL}/databases/{self.database_id}",
                     headers=self._headers(),
@@ -127,14 +128,33 @@ class NotionBridge:
                     title = "".join(t.get("plain_text", "") for t in title_parts) if title_parts else "Unknown"
                     return {
                         "connected": True,
+                        "type": "database",
                         "database_name": title,
                         "database_id": self.database_id,
                         "last_sync": self.last_sync,
                     }
                 elif resp.status_code == 401:
                     return {"connected": False, "reason": "Invalid API key"}
+
+                # Fall back to page
+                resp = await client.get(
+                    f"{self.BASE_URL}/pages/{self.database_id}",
+                    headers=self._headers(),
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    props = data.get("properties", {})
+                    title_prop = props.get("title", {})
+                    title = self._extract_text_property(title_prop) if title_prop else "Connected Page"
+                    return {
+                        "connected": True,
+                        "type": "page",
+                        "database_name": title or "Connected Page",
+                        "database_id": self.database_id,
+                        "last_sync": self.last_sync,
+                    }
                 elif resp.status_code == 404:
-                    return {"connected": False, "reason": "Database not found — make sure it's shared with the integration"}
+                    return {"connected": False, "reason": "Page/database not found — make sure it's shared with the integration"}
                 else:
                     return {"connected": False, "reason": f"API error: {resp.status_code}"}
         except Exception as e:
