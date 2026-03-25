@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { X, Send, Trash2, Plus, FileText, Clock, Zap, Bot, Wifi } from 'lucide-react'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats, createCorrection } from '../lib/api'
@@ -19,6 +20,22 @@ export function Agents() {
   const [correctionText, setCorrectionText] = useState('')
   const messagesEndRef = useRef(null)
   const chatContainerRef = useRef(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const chatParamHandled = useRef(false)
+
+  // Auto-open chat when navigating from Office with ?chat=agentId
+  useEffect(() => {
+    if (chatParamHandled.current || agents.length === 0) return
+    const chatId = searchParams.get('chat')
+    if (chatId) {
+      const agent = agents.find(a => a.id === chatId)
+      if (agent) {
+        handleSelectAgent(agent)
+        setSearchParams({}, { replace: true })
+        chatParamHandled.current = true
+      }
+    }
+  }, [agents, searchParams])
 
   const handleCorrection = async () => {
     if (!correctionText.trim() || !correctionMsg || !selectedAgent) return

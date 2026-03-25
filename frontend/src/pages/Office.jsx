@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import { getAgents } from '../lib/api'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { useOfficeCamera } from '../components/office/useOfficeCamera'
+import { OfficeZone } from '../components/office/OfficeZone'
+import { AgentDesk } from '../components/office/AgentDesk'
+import { AgentPopup } from '../components/office/AgentPopup'
 
 const AGENT_COLORS = {
   Scout: '#3b6fcc',
@@ -10,11 +14,45 @@ const AGENT_COLORS = {
   Radar: '#1d8fa0',
 }
 
-const AGENT_EMOJIS = {
-  Scout: '🔍',
-  Quill: '✏️',
-  Forge: '🔨',
-  Radar: '📡',
+// Home desk positions within work zone
+const HOME_POSITIONS = [
+  { left: 30, top: 40 },
+  { left: 220, top: 40 },
+  { left: 30, top: 180 },
+  { left: 220, top: 180 },
+]
+
+// Visitor positions per zone
+const ZONE_VISITOR_POS = {
+  meeting: [
+    { left: 60, top: 40 },
+    { left: 220, top: 40 },
+    { left: 60, top: 170 },
+    { left: 220, top: 170 },
+  ],
+  boss: [
+    { left: 50, top: 30 },
+    { left: 210, top: 30 },
+  ],
+  notion: [
+    { left: 60, top: 30 },
+    { left: 210, top: 30 },
+  ],
+  server: [
+    { left: 120, top: 20 },
+    { left: 320, top: 20 },
+    { left: 520, top: 20 },
+  ],
+}
+
+function getAgentZone(agent) {
+  if (agent.status !== 'working') return 'work'
+  const task = (agent.current_task || '').toLowerCase()
+  if (task.includes('crew') || task.includes('meeting') || task.includes('collaborate')) return 'meeting'
+  if (task.includes('notion') || task.includes('publish')) return 'notion'
+  if (task.includes('report') || task.includes('brief')) return 'boss'
+  if (task.includes('sync') || task.includes('index') || task.includes('infra') || task.includes('embed')) return 'server'
+  return 'work'
 }
 
 export function Office() {
@@ -22,6 +60,7 @@ export function Office() {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedAgent, setSelectedAgent] = useState(null)
   const { events } = useWebSocket()
+  const { zoom, panX, panY, isDragging, reset, viewportRef, wasDragging, handlers } = useOfficeCamera()
 
   useEffect(() => { loadAgents() }, [])
 
@@ -36,6 +75,12 @@ export function Office() {
               : a
           )
         )
+        // Update selected agent if it's the one that changed
+        setSelectedAgent(prev =>
+          prev?.id === lastEvent.agent_id
+            ? { ...prev, status: lastEvent.status || prev.status, current_task: lastEvent.current_task ?? prev.current_task }
+            : prev
+        )
       }
     }
   }, [events])
@@ -48,253 +93,261 @@ export function Office() {
     } catch {} finally { setIsLoading(false) }
   }
 
+  // Compute zones for each agent
+  const agentZones = {}
+  agents.forEach((agent, idx) => {
+    agentZones[agent.id] = { zone: getAgentZone(agent), homeIdx: idx }
+  })
+
   const activeCount = agents.filter(a => a.status === 'working').length
+  const zoomPct = Math.round(zoom * 100)
+
+  const handleAgentClick = (agent) => {
+    if (isDragging || wasDragging()) return
+    setSelectedAgent(prev => prev?.id === agent.id ? null : agent)
+  }
+
+  // Track visitor slot assignment per zone
+  const zoneSlotCounters = {}
 
   return (
-    <div className="h-[calc(100vh-80px)] relative overflow-hidden select-none" style={{ perspective: '1200px' }}>
+    <div className="h-[calc(100vh-80px)] relative overflow-hidden select-none bg-[#08080e]">
       {/* Status bar */}
-      <div className="absolute top-2 left-2 z-20 flex items-center gap-4 px-3 py-1.5 bg-black/50 backdrop-blur-sm rounded-lg border border-white/5">
-        <span className="text-[10px] text-white/60">{agents.length} agents · {activeCount} active</span>
+      <div className="absolute top-3 left-3 z-20 flex items-center gap-3">
+        <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg"
+          style={{
+            background: 'rgba(10,10,16,0.85)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+          <span className="text-[10px] text-white/50"
+            style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+            {agents.length} AGENTS
+          </span>
+          <div className="w-px h-3 bg-white/10" />
+          <span className="text-[10px]" style={{
+            color: activeCount > 0 ? '#10b981' : 'rgba(255,255,255,0.3)',
+            fontFamily: '"JetBrains Mono", monospace',
+          }}>
+            {activeCount} ACTIVE
+          </span>
+        </div>
+
+        {/* Camera controls */}
+        <div className="flex items-center gap-1 px-2 py-1 rounded-lg"
+          style={{
+            background: 'rgba(10,10,16,0.85)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+          <button onClick={() => reset()} className="p-1 rounded hover:bg-white/[0.06] transition-colors" title="Reset view">
+            <RotateCcw size={12} className="text-white/30" />
+          </button>
+          <span className="text-[9px] text-white/30 w-8 text-center"
+            style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+            {zoomPct}%
+          </span>
+        </div>
       </div>
 
-      {/* Isometric Office Floor */}
-      <div className="absolute inset-0 flex items-center justify-center">
+      {/* Viewport (captures mouse events for camera) */}
+      <div
+        ref={viewportRef}
+        className="absolute inset-0"
+        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        {...handlers}
+      >
+        {/* Camera rig (pan + zoom, outside isometric rotation) */}
         <div
-          className="relative"
+          className="absolute inset-0 flex items-center justify-center"
           style={{
-            transform: 'rotateX(55deg) rotateZ(-45deg)',
-            transformStyle: 'preserve-3d',
+            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+            transition: isDragging ? 'none' : 'transform 0.08s ease-out',
+            willChange: 'transform',
           }}
         >
-          {/* Floor */}
+          {/* Isometric transform */}
           <div
             className="relative"
             style={{
-              width: '600px',
-              height: '500px',
-              background: 'linear-gradient(135deg, #12121a 0%, #0e0e14 100%)',
-              borderRadius: '8px',
-              boxShadow: '0 40px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)',
-              backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
-              backgroundSize: '50px 50px',
+              transform: 'rotateX(55deg) rotateZ(-45deg)',
+              transformStyle: 'preserve-3d',
             }}
           >
-            {/* Office label */}
+            {/* Main floor */}
             <div
-              className="absolute text-[10px] font-bold tracking-[0.3em] text-white/10 uppercase"
-              style={{ top: '20px', left: '30px', transform: 'rotateZ(45deg) rotateX(-55deg)', transformStyle: 'preserve-3d' }}
-            >
-              The Lab HQ
-            </div>
-
-            {/* Agent Desks */}
-            {agents.map((agent, idx) => {
-              const positions = [
-                { left: '80px', top: '80px' },
-                { left: '320px', top: '80px' },
-                { left: '80px', top: '280px' },
-                { left: '320px', top: '280px' },
-              ]
-              const pos = positions[idx] || { left: `${80 + (idx % 2) * 240}px`, top: `${80 + Math.floor(idx / 2) * 200}px` }
-              const color = AGENT_COLORS[agent.name] || '#666'
-              const isWorking = agent.status === 'working'
-              const isError = agent.status === 'error'
-
-              return (
-                <div
-                  key={agent.id}
-                  className="absolute cursor-pointer group"
-                  style={{ ...pos, transformStyle: 'preserve-3d' }}
-                  onClick={() => setSelectedAgent(agent)}
-                >
-                  {/* Desk surface */}
-                  <div
-                    className="relative transition-all duration-300"
-                    style={{
-                      width: '160px',
-                      height: '100px',
-                      transformStyle: 'preserve-3d',
-                    }}
-                  >
-                    {/* Desk top */}
-                    <div style={{
-                      width: '160px',
-                      height: '100px',
-                      background: 'linear-gradient(135deg, #1e1e28 0%, #16161e 100%)',
-                      borderRadius: '6px',
-                      border: `1px solid ${isWorking ? color + '40' : 'rgba(255,255,255,0.05)'}`,
-                      boxShadow: isWorking ? `0 0 20px ${color}20, 0 8px 24px rgba(0,0,0,0.4)` : '0 8px 24px rgba(0,0,0,0.3)',
-                      transition: 'all 0.3s ease',
-                      position: 'relative',
-                      transform: 'translateZ(30px)',
-                    }}>
-                      {/* Monitor */}
-                      <div style={{
-                        position: 'absolute',
-                        top: '10px',
-                        left: '50%',
-                        transform: 'translateX(-50%) translateZ(20px)',
-                        width: '60px',
-                        height: '35px',
-                        background: isWorking ? '#0a1628' : '#0a0a10',
-                        borderRadius: '3px',
-                        border: `1px solid ${isWorking ? color + '30' : 'rgba(255,255,255,0.05)'}`,
-                        boxShadow: isWorking ? `0 0 8px ${color}15` : 'none',
-                        transition: 'all 0.3s ease',
-                      }}>
-                        {/* Screen content lines */}
-                        {isWorking && (
-                          <div className="p-1.5 space-y-1">
-                            <div className="h-[2px] rounded-full animate-pulse" style={{ width: '70%', background: color + '60' }} />
-                            <div className="h-[2px] rounded-full animate-pulse" style={{ width: '50%', background: color + '40', animationDelay: '0.2s' }} />
-                            <div className="h-[2px] rounded-full animate-pulse" style={{ width: '85%', background: color + '30', animationDelay: '0.4s' }} />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Agent avatar */}
-                      <div
-                        className={`absolute transition-all duration-500 ${isWorking ? 'animate-bounce' : ''}`}
-                        style={{
-                          bottom: '8px',
-                          right: '12px',
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '50%',
-                          background: color,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '14px',
-                          fontWeight: 'bold',
-                          color: 'white',
-                          boxShadow: isWorking
-                            ? `0 0 12px ${color}80, 0 2px 8px rgba(0,0,0,0.3)`
-                            : '0 2px 8px rgba(0,0,0,0.3)',
-                          transform: `translateZ(15px)`,
-                          animationDuration: isWorking ? '1.5s' : '0s',
-                        }}
-                      >
-                        {agent.name[0]}
-                      </div>
-
-                      {/* Status dot */}
-                      <div
-                        className={isWorking ? 'animate-ping' : ''}
-                        style={{
-                          position: 'absolute',
-                          top: '8px',
-                          right: '8px',
-                          width: '6px',
-                          height: '6px',
-                          borderRadius: '50%',
-                          background: isError ? '#ef4444' : isWorking ? '#10b981' : '#6b7280',
-                          boxShadow: isWorking ? '0 0 6px #10b981' : isError ? '0 0 6px #ef4444' : 'none',
-                        }}
-                      />
-                    </div>
-
-                    {/* Desk legs (3D effect) */}
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '-16px',
-                      left: '10px',
-                      width: '140px',
-                      height: '16px',
-                      background: 'linear-gradient(to bottom, #121218 0%, #0a0a0e 100%)',
-                      borderRadius: '0 0 4px 4px',
-                      transform: 'translateZ(14px)',
-                    }} />
-                  </div>
-
-                  {/* Name + Status label */}
-                  <div
-                    className="mt-3 text-center"
-                    style={{ transform: 'rotateZ(45deg) rotateX(-55deg) translateZ(30px)', transformStyle: 'preserve-3d' }}
-                  >
-                    <p className="text-xs font-semibold text-white/80">{agent.name}</p>
-                    <p className="text-[9px] text-white/40">
-                      {isWorking ? '⚡ Working' : isError ? '⚠ Error' : '● Online'}
-                    </p>
-                    {isWorking && agent.current_task && (
-                      <p className="text-[8px] text-white/25 mt-0.5 max-w-[120px] truncate mx-auto">
-                        {agent.current_task}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Boss Desk */}
-            <div
-              className="absolute"
+              className="relative"
               style={{
-                left: '200px',
-                bottom: '30px',
-                width: '200px',
-                height: '60px',
-                background: 'linear-gradient(135deg, #1a1428 0%, #14101e 100%)',
-                borderRadius: '6px',
-                border: '1px solid rgba(139,92,246,0.15)',
-                boxShadow: '0 0 15px rgba(139,92,246,0.05), 0 8px 24px rgba(0,0,0,0.3)',
-                transform: 'translateZ(30px)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                width: 1100,
+                height: 820,
+                background: 'linear-gradient(135deg, #0e0e16 0%, #0a0a10 100%)',
+                borderRadius: 10,
+                boxShadow: '0 60px 120px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02)',
+                backgroundImage: 'linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)',
+                backgroundSize: '50px 50px',
               }}
             >
-              <span
-                className="text-[9px] font-bold tracking-wider text-white/20 uppercase"
-                style={{ transform: 'rotateZ(45deg) rotateX(-55deg)', transformStyle: 'preserve-3d' }}
+              {/* Floor label */}
+              <div
+                className="absolute"
+                style={{
+                  top: 16, left: 24,
+                  transform: 'rotateZ(45deg) rotateX(-55deg) translateZ(2px)',
+                  transformStyle: 'preserve-3d',
+                }}
               >
-                Boss Desk
-              </span>
+                <span style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.35em',
+                  color: 'rgba(255,255,255,0.06)',
+                  fontFamily: '"JetBrains Mono", "SF Mono", monospace',
+                  textTransform: 'uppercase',
+                }}>
+                  The Lab HQ
+                </span>
+              </div>
+
+              {/* === ZONES === */}
+
+              {/* Work Area — top left */}
+              <OfficeZone
+                type="work"
+                style={{ left: 40, top: 40, width: 460, height: 340 }}
+              >
+                {agents.map((agent, idx) => {
+                  const zone = agentZones[agent.id]?.zone
+                  const pos = HOME_POSITIONS[idx] || { left: 30 + (idx % 2) * 190, top: 40 + Math.floor(idx / 2) * 140 }
+                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
+                  const isDimmed = zone !== 'work'
+
+                  return (
+                    <AgentDesk
+                      key={agent.id}
+                      agent={agent}
+                      color={color}
+                      isSelected={selectedAgent?.id === agent.id}
+                      onClick={() => handleAgentClick(agent)}
+                      style={{ left: pos.left, top: pos.top }}
+                      dimmed={isDimmed}
+                    />
+                  )
+                })}
+              </OfficeZone>
+
+              {/* Meeting Room — top right */}
+              <OfficeZone
+                type="meeting"
+                style={{ left: 560, top: 40, width: 480, height: 340 }}
+              >
+                {agents.map((agent, idx) => {
+                  const zone = agentZones[agent.id]?.zone
+                  if (zone !== 'meeting') return null
+                  if (!zoneSlotCounters.meeting) zoneSlotCounters.meeting = 0
+                  const slot = zoneSlotCounters.meeting++
+                  const vPos = ZONE_VISITOR_POS.meeting[slot % ZONE_VISITOR_POS.meeting.length]
+                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
+
+                  return (
+                    <AgentDesk
+                      key={`meeting-${agent.id}`}
+                      agent={agent}
+                      color={color}
+                      isSelected={selectedAgent?.id === agent.id}
+                      onClick={() => handleAgentClick(agent)}
+                      style={{ left: vPos.left, top: vPos.top }}
+                    />
+                  )
+                })}
+              </OfficeZone>
+
+              {/* Boss Office — bottom left */}
+              <OfficeZone
+                type="boss"
+                style={{ left: 40, top: 420, width: 460, height: 190 }}
+              >
+                {agents.map((agent) => {
+                  const zone = agentZones[agent.id]?.zone
+                  if (zone !== 'boss') return null
+                  if (!zoneSlotCounters.boss) zoneSlotCounters.boss = 0
+                  const slot = zoneSlotCounters.boss++
+                  const vPos = ZONE_VISITOR_POS.boss[slot % ZONE_VISITOR_POS.boss.length]
+                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
+
+                  return (
+                    <AgentDesk
+                      key={`boss-${agent.id}`}
+                      agent={agent}
+                      color={color}
+                      isSelected={selectedAgent?.id === agent.id}
+                      onClick={() => handleAgentClick(agent)}
+                      style={{ left: vPos.left, top: vPos.top }}
+                    />
+                  )
+                })}
+              </OfficeZone>
+
+              {/* Notion Outbox — bottom right */}
+              <OfficeZone
+                type="notion"
+                style={{ left: 560, top: 420, width: 480, height: 190 }}
+              >
+                {agents.map((agent) => {
+                  const zone = agentZones[agent.id]?.zone
+                  if (zone !== 'notion') return null
+                  if (!zoneSlotCounters.notion) zoneSlotCounters.notion = 0
+                  const slot = zoneSlotCounters.notion++
+                  const vPos = ZONE_VISITOR_POS.notion[slot % ZONE_VISITOR_POS.notion.length]
+                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
+
+                  return (
+                    <AgentDesk
+                      key={`notion-${agent.id}`}
+                      agent={agent}
+                      color={color}
+                      isSelected={selectedAgent?.id === agent.id}
+                      onClick={() => handleAgentClick(agent)}
+                      style={{ left: vPos.left, top: vPos.top }}
+                    />
+                  )
+                })}
+              </OfficeZone>
+
+              {/* Server Room — bottom */}
+              <OfficeZone
+                type="server"
+                style={{ left: 40, top: 650, width: 1000, height: 130 }}
+              >
+                {agents.map((agent) => {
+                  const zone = agentZones[agent.id]?.zone
+                  if (zone !== 'server') return null
+                  if (!zoneSlotCounters.server) zoneSlotCounters.server = 0
+                  const slot = zoneSlotCounters.server++
+                  const vPos = ZONE_VISITOR_POS.server[slot % ZONE_VISITOR_POS.server.length]
+                  const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
+
+                  return (
+                    <AgentDesk
+                      key={`server-${agent.id}`}
+                      agent={agent}
+                      color={color}
+                      isSelected={selectedAgent?.id === agent.id}
+                      onClick={() => handleAgentClick(agent)}
+                      style={{ left: vPos.left, top: vPos.top }}
+                    />
+                  )
+                })}
+              </OfficeZone>
             </div>
           </div>
         </div>
       </div>
 
       {/* Agent detail popup */}
-      {selectedAgent && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-lab-elevated/95 backdrop-blur-md border border-white/10 rounded-xl p-4 w-72 shadow-2xl">
-          <div className="flex items-center gap-3 mb-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg"
-              style={{ backgroundColor: AGENT_COLORS[selectedAgent.name] || '#666' }}
-            >
-              {AGENT_EMOJIS[selectedAgent.name] || selectedAgent.name[0]}
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-white">{selectedAgent.name}</p>
-              <p className="text-[10px] text-white/50">{selectedAgent.role}</p>
-            </div>
-            <button onClick={() => setSelectedAgent(null)} className="ml-auto text-white/30 hover:text-white/60">
-              <X size={16} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            <div className="px-2 py-1.5 bg-white/5 rounded">
-              <p className="text-white/40">Status</p>
-              <p className={`font-medium ${selectedAgent.status === 'working' ? 'text-emerald-400' : selectedAgent.status === 'error' ? 'text-red-400' : 'text-white/70'}`}>
-                {selectedAgent.status || 'idle'}
-              </p>
-            </div>
-            <div className="px-2 py-1.5 bg-white/5 rounded">
-              <p className="text-white/40">Provider</p>
-              <p className="text-white/70 font-medium">{selectedAgent.provider}</p>
-            </div>
-          </div>
-
-          {selectedAgent.current_task && (
-            <div className="mt-2 px-2 py-1.5 bg-white/5 rounded text-[10px]">
-              <p className="text-white/40">Current Task</p>
-              <p className="text-white/70">{selectedAgent.current_task}</p>
-            </div>
-          )}
-        </div>
-      )}
+      <AgentPopup
+        agent={selectedAgent}
+        color={AGENT_COLORS[selectedAgent?.name] || selectedAgent?.avatar_color || '#666'}
+        zone={selectedAgent ? agentZones[selectedAgent.id]?.zone : 'work'}
+        onClose={() => setSelectedAgent(null)}
+      />
     </div>
   )
 }
