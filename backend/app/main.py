@@ -68,6 +68,7 @@ agent_manager.memory_engine = {
 
 # Wire correction manager into scheduler for feedback → correction pipeline
 scheduler_manager.correction_manager = correction_manager
+scheduler_manager.notion_bridge = notion_bridge
 
 # Notion integration
 notion_bridge = NotionBridge()
@@ -507,6 +508,9 @@ async def generate_report(data: dict):
         )
         report = report_manager.create_report(report_data)
         await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+        # Auto-publish to Notion
+        if notion_bridge.configured:
+            asyncio.create_task(_publish_report_to_notion(report))
         return report.model_dump(mode="json")
     except Exception as e:
         agent_manager.update_status(agent_id, "error", str(e))

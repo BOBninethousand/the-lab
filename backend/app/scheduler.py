@@ -62,6 +62,7 @@ class SchedulerManager:
         self.document_manager = document_manager
         self.ws_manager = ws_manager
         self.correction_manager = None  # Set from main.py after init
+        self.notion_bridge = None  # Set from main.py after init
         self.scheduler = AsyncIOScheduler()
         self.jobs: dict = {}
         self.jobs_file = f"{settings.DATA_DIR}/scheduled_jobs.json"
@@ -330,6 +331,33 @@ class SchedulerManager:
         except RuntimeError:
             pass  # No event loop available — skip broadcast
 
+    def _publish_to_notion_sync(self, title: str, content: str, agent_name: str):
+        """Publish job output to Notion from a sync context."""
+        if not self.notion_bridge or not self.notion_bridge.configured:
+            return
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(
+                    asyncio.ensure_future,
+                    self.notion_bridge.publish_report(
+                        title=title,
+                        content=content,
+                        agent_name=agent_name,
+                        report_type="scheduled",
+                        source="scheduled",
+                    ),
+                )
+                logger.info(f"Notion publish queued for: {title}")
+            else:
+                asyncio.run(self.notion_bridge.publish_report(
+                    title=title, content=content, agent_name=agent_name,
+                    report_type="scheduled", source="scheduled",
+                ))
+        except Exception as e:
+            logger.warning(f"Notion publish failed for job '{title}': {e}")
+
     def _resolve_agent(self, agent_id: str, job_config: dict):
         """Resolve agent by ID, falling back to name-based lookup."""
         agent = self.agent_manager.get_agent(agent_id)
@@ -408,6 +436,9 @@ class SchedulerManager:
 
             job_config["last_run"] = datetime.now().isoformat()
             self._save_jobs()
+
+            # Auto-publish to Notion
+            self._publish_to_notion_sync(job_config["name"], response, agent.name)
 
             self._broadcast_sync("job_completed", {
                 "job_id": job_id,
