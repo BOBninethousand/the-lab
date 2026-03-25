@@ -3,11 +3,11 @@ import { StatCard } from '../components/StatCard'
 import { AgentRow } from '../components/AgentRow'
 import { ActivityList } from '../components/ActivityList'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { getAgents, getSchedule, getCrews, getTasks, getReports, getReportStats, getNotionStatus, syncNotion, getNotionTasks, runNotionTask } from '../lib/api'
+import { getAgents, getSchedule, getCrews, getTasks, getReports, getReportStats, getNotionStatus } from '../lib/api'
 import { formatDistanceToNow } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { Link, useNavigate } from 'react-router-dom'
-import { Clock, FileText, Zap, Bot, RefreshCw, Play, ExternalLink } from 'lucide-react'
+import { Clock, FileText, Zap, Bot, ExternalLink } from 'lucide-react'
 
 const AGENT_COLORS = {
   Scout: '#3b6fcc',
@@ -67,10 +67,6 @@ export function Dashboard() {
   const [activity, setActivity] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [notionStatus, setNotionStatus] = useState(null)
-  const [notionTasks, setNotionTasks] = useState([])
-  const [notionSyncing, setNotionSyncing] = useState(false)
-  const [notionRunning, setNotionRunning] = useState(null)
-  const [notionAgentMap, setNotionAgentMap] = useState({})
   const { events, isConnected } = useWebSocket()
   const navigate = useNavigate()
 
@@ -94,13 +90,9 @@ export function Dashboard() {
         setLatestReports(Array.isArray(reportsData) ? reportsData : [])
         if (rStatsData) setReportStats(rStatsData)
 
-        // Load Notion status + tasks
-        const [nStatus, nTasks] = await Promise.all([
-          getNotionStatus().catch(() => null),
-          getNotionTasks().catch(() => []),
-        ])
+        // Load Notion status
+        const nStatus = await getNotionStatus().catch(() => null)
         if (nStatus) setNotionStatus(nStatus)
-        setNotionTasks(Array.isArray(nTasks) ? nTasks : [])
       } catch (err) {
         console.error('Failed to load dashboard data:', err)
       } finally {
@@ -132,119 +124,53 @@ export function Dashboard() {
         <StatCard label="Unread" value={reportStats?.unread ?? 0} isLoading={isLoading} />
       </div>
 
-      {/* Notion Tasks */}
+      {/* Notion Activity */}
       {notionStatus && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <h2 className="text-section-label">Notion Tasks</h2>
+              <h2 className="text-section-label">Notion</h2>
               {notionStatus.connected ? (
-                <>
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-400">
-                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> {notionStatus.database_name}
-                  </span>
-                  {notionStatus.last_sync && (
-                    <span className="text-[10px] text-lab-text-muted">
-                      Synced {formatDistanceToNow(new Date(notionStatus.last_sync))}
-                    </span>
-                  )}
-                </>
+                <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> Connected — {notionStatus.database_name}
+                </span>
               ) : (
                 <span className="flex items-center gap-1 text-[10px] text-red-400">
                   <span className="w-1.5 h-1.5 bg-red-400 rounded-full" /> Not connected
                 </span>
               )}
             </div>
-            {notionStatus.connected && (
-              <button
-                onClick={async () => {
-                  setNotionSyncing(true)
-                  try {
-                    const result = await syncNotion()
-                    setNotionTasks(result.tasks || [])
-                    const status = await getNotionStatus().catch(() => null)
-                    if (status) setNotionStatus(status)
-                  } catch {} finally { setNotionSyncing(false) }
-                }}
-                disabled={notionSyncing}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={notionSyncing ? 'animate-spin' : ''} />
-                {notionSyncing ? 'Syncing...' : 'Sync Now'}
-              </button>
-            )}
           </div>
 
           {!notionStatus.connected ? (
             <div className="card p-4">
               <p className="text-xs text-lab-text-secondary mb-2">{notionStatus.reason}</p>
-              <p className="text-[10px] text-lab-text-muted">To connect: Open Agent Ops in Notion → "..." menu → Connections → Connect to "The Lab"</p>
-            </div>
-          ) : notionTasks.length === 0 ? (
-            <div className="card text-center py-6">
-              <p className="text-sm text-lab-text-faint">No new tasks in Notion. Click Sync to check.</p>
+              <p className="text-[10px] text-lab-text-muted">Set NOTION_API_KEY and NOTION_DATABASE_ID in .env, then share the page with The Lab integration.</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {notionTasks.map(task => (
-                <div key={task.notion_page_id} className="flex items-center gap-3 p-3 border border-lab-border rounded-lg hover:bg-white/[0.02] transition-subtle">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-medium text-lab-text-primary">{task.title}</span>
-                      {task.priority && (
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                          task.priority.includes('Urgent') ? 'text-red-400 bg-red-400/10' :
-                          task.priority.includes('Low') ? 'text-lab-text-muted bg-white/[0.05]' :
-                          'text-amber-400 bg-amber-400/10'
-                        }`}>{task.priority}</span>
-                      )}
-                      {task.project && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] text-lab-text-muted bg-white/[0.05]">{task.project}</span>
-                      )}
-                    </div>
-                    {task.handoff_notes && (
-                      <p className="text-[10px] text-lab-text-muted line-clamp-1">{task.handoff_notes}</p>
-                    )}
-                  </div>
-
-                  <select
-                    value={notionAgentMap[task.notion_page_id] || ''}
-                    onChange={e => setNotionAgentMap(prev => ({ ...prev, [task.notion_page_id]: e.target.value }))}
-                    className="bg-lab-bg border border-lab-border rounded px-2 py-1 text-[10px] text-lab-text-primary focus:outline-none focus:border-lab-accent/50 w-28"
-                  >
-                    <option value="">Assign agent</option>
-                    {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-
-                  <button
-                    onClick={async () => {
-                      const agentId = notionAgentMap[task.notion_page_id]
-                      if (!agentId) return
-                      setNotionRunning(task.notion_page_id)
-                      try {
-                        await runNotionTask(task.notion_page_id, agentId)
-                        // Remove from list after completion
-                        setNotionTasks(prev => prev.filter(t => t.notion_page_id !== task.notion_page_id))
-                      } catch (err) {
-                        console.error('Notion task failed:', err)
-                      } finally { setNotionRunning(null) }
-                    }}
-                    disabled={!notionAgentMap[task.notion_page_id] || notionRunning === task.notion_page_id}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-lab-accent/10 text-lab-accent rounded text-[10px] hover:bg-lab-accent/20 transition-subtle disabled:opacity-30"
-                  >
-                    <Play size={10} />
-                    {notionRunning === task.notion_page_id ? 'Running...' : 'Run'}
-                  </button>
-
-                  {task.url && (
-                    <a href={task.url} target="_blank" rel="noopener noreferrer"
-                      className="text-lab-text-muted hover:text-lab-text-secondary transition-subtle">
-                      <ExternalLink size={12} />
+            (() => {
+              const publishedReports = latestReports.filter(r => r.notion_page_url)
+              return publishedReports.length > 0 ? (
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {publishedReports.slice(0, 4).map(r => (
+                    <a key={r.id} href={r.notion_page_url} target="_blank" rel="noopener noreferrer"
+                      className="flex-shrink-0 w-56 p-3 border border-emerald-500/20 bg-emerald-500/[0.03] rounded-lg hover:bg-emerald-500/[0.06] transition-subtle">
+                      <div className="flex items-center gap-2 mb-1">
+                        <AvatarCircle name={r.agent_name} agent={r.agent_name} size={18} />
+                        <span className="text-[10px] text-lab-text-muted">{r.agent_name}</span>
+                        <ExternalLink size={10} className="text-emerald-400 ml-auto" />
+                      </div>
+                      <p className="text-xs text-lab-text-primary font-medium truncate">{r.title}</p>
+                      <p className="text-[10px] text-lab-text-muted mt-0.5">{formatDistanceToNow(new Date(r.created_at))}</p>
                     </a>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="card text-center py-4">
+                  <p className="text-xs text-lab-text-faint">Reports auto-publish to Notion. Generate a report to see it here.</p>
+                </div>
+              )
+            })()
           )}
         </div>
       )}

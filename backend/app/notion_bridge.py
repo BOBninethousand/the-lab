@@ -1,5 +1,6 @@
 import httpx
 import json
+import os
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -8,6 +9,22 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 NOTION_VERSION = "2022-06-28"
+
+AGENT_EMOJIS = {
+    "Scout": "🔍",
+    "Quill": "✏️",
+    "Forge": "🔨",
+    "Radar": "📡",
+}
+
+REPORT_TYPE_EMOJIS = {
+    "briefing": "📋",
+    "content": "📝",
+    "tech_report": "⚙️",
+    "outreach": "📧",
+    "weekly_review": "📊",
+    "content_calendar": "📅",
+}
 
 
 class NotionBridge:
@@ -19,6 +36,83 @@ class NotionBridge:
         self.configured = bool(self.api_key and self.database_id)
         self.last_sync = None
         self._cached_tasks: List[Dict[str, Any]] = []
+        self._agent_dbs: Dict[str, str] = {}  # agent_name -> notion database_id
+        self._agent_dbs_file = f"{settings.DATA_DIR}/notion_agent_dbs.json"
+        self._load_agent_dbs()
+
+    def _load_agent_dbs(self):
+        if os.path.exists(self._agent_dbs_file):
+            try:
+                with open(self._agent_dbs_file, "r") as f:
+                    self._agent_dbs = json.load(f)
+            except Exception:
+                self._agent_dbs = {}
+
+    def _save_agent_dbs(self):
+        os.makedirs(os.path.dirname(self._agent_dbs_file), exist_ok=True)
+        with open(self._agent_dbs_file, "w") as f:
+            json.dump(self._agent_dbs, f, indent=2)
+
+    async def _get_or_create_agent_db(self, agent_name: str) -> Optional[str]:
+        """Get or create a Notion database for an agent."""
+        if agent_name in self._agent_dbs:
+            return self._agent_dbs[agent_name]
+
+        if not self.configured:
+            return None
+
+        emoji = AGENT_EMOJIS.get(agent_name, "🤖")
+        db_title = f"The Lab — {agent_name}"
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{self.BASE_URL}/databases",
+                    headers=self._headers(),
+                    json={
+                        "parent": {"page_id": self.database_id},
+                        "icon": {"type": "emoji", "emoji": emoji},
+                        "title": [{"type": "text", "text": {"content": db_title}}],
+                        "properties": {
+                            "Title": {"title": {}},
+                            "Type": {
+                                "select": {
+                                    "options": [
+                                        {"name": "Briefing", "color": "blue"},
+                                        {"name": "Content", "color": "green"},
+                                        {"name": "Tech Report", "color": "purple"},
+                                        {"name": "Outreach", "color": "orange"},
+                                        {"name": "Weekly Review", "color": "yellow"},
+                                        {"name": "Content Calendar", "color": "pink"},
+                                    ]
+                                }
+                            },
+                            "Date": {"date": {}},
+                            "Source": {
+                                "select": {
+                                    "options": [
+                                        {"name": "Scheduled", "color": "blue"},
+                                        {"name": "Manual", "color": "green"},
+                                        {"name": "Chat", "color": "purple"},
+                                    ]
+                                }
+                            },
+                        },
+                    },
+                )
+                if resp.status_code == 200:
+                    db_data = resp.json()
+                    db_id = db_data["id"]
+                    self._agent_dbs[agent_name] = db_id
+                    self._save_agent_dbs()
+                    logger.info(f"Created Notion database '{db_title}' for agent {agent_name}")
+                    return db_id
+                else:
+                    logger.error(f"Failed to create Notion DB for {agent_name}: {resp.status_code} {resp.text[:200]}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error creating Notion DB for {agent_name}: {e}")
+            return None
 
     def _headers(self) -> dict:
         return {
@@ -378,45 +472,63 @@ class NotionBridge:
         report_type: str = "",
         source: str = "scheduled",
     ) -> Optional[str]:
-        """Publish a report as a Notion page. Returns the page URL or None."""
+        """Publish a report into the agent's Notion database. Returns the page URL or None."""
         if not self.configured:
             return None
         try:
-            # Build metadata callout
-            meta_text = f"Agent: {agent_name} | Type: {report_type} | Source: {source} | {datetime.now().strftime('%d %b %Y %H:%M')}"
+            # Get or create per-agent database
+            db_id = await self._get_or_create_agent_db(agent_name or "General")
+
+            # Choose emoji based on report type
+            page_emoji = REPORT_TYPE_EMOJIS.get(report_type, "📄")
+
+            # Format type label for database property
+            type_labels = {
+                "briefing": "Briefing", "content": "Content", "tech_report": "Tech Report",
+                "outreach": "Outreach", "weekly_review": "Weekly Review",
+                "content_calendar": "Content Calendar",
+            }
+            type_label = type_labels.get(report_type, report_type.replace("_", " ").title() if report_type else "Report")
+            source_label = source.capitalize() if source else "Manual"
 
             # Convert content to Notion blocks
             content_blocks = self._markdown_to_notion_blocks(content)
 
-            # Prepend metadata callout
-            callout_block = {
-                "object": "block", "type": "callout",
-                "callout": {
-                    "rich_text": [{"type": "text", "text": {"content": meta_text}}],
-                    "icon": {"type": "emoji", "emoji": "🤖"},
-                    "color": "blue_background",
+            # Build page data
+            if db_id:
+                # Publish into agent's database
+                page_data = {
+                    "parent": {"database_id": db_id},
+                    "icon": {"type": "emoji", "emoji": page_emoji},
+                    "properties": {
+                        "Title": {"title": [{"text": {"content": title}}]},
+                        "Type": {"select": {"name": type_label}},
+                        "Date": {"date": {"start": datetime.now().strftime("%Y-%m-%d")}},
+                        "Source": {"select": {"name": source_label}},
+                    },
+                    "children": content_blocks,
                 }
-            }
-            all_blocks = [callout_block] + content_blocks
+            else:
+                # Fallback: publish as child page of connected page
+                page_data = {
+                    "parent": {"page_id": self.database_id},
+                    "icon": {"type": "emoji", "emoji": page_emoji},
+                    "properties": {
+                        "title": {"title": [{"text": {"content": title}}]}
+                    },
+                    "children": content_blocks,
+                }
 
-            # Create page as child of connected page
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     f"{self.BASE_URL}/pages",
                     headers=self._headers(),
-                    json={
-                        "parent": {"page_id": self.database_id},
-                        "icon": {"type": "emoji", "emoji": "📄"},
-                        "properties": {
-                            "title": {"title": [{"text": {"content": title}}]}
-                        },
-                        "children": all_blocks,
-                    },
+                    json=page_data,
                 )
                 if resp.status_code == 200:
-                    page_data = resp.json()
-                    page_url = page_data.get("url", "")
-                    logger.info(f"Published report to Notion: {title} → {page_url}")
+                    result = resp.json()
+                    page_url = result.get("url", "")
+                    logger.info(f"Published to Notion [{agent_name}]: {title} → {page_url}")
                     return page_url
                 else:
                     logger.error(f"Notion publish failed: {resp.status_code} {resp.text[:300]}")
