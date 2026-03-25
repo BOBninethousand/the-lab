@@ -229,7 +229,7 @@ export function Memory() {
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-6 border-b border-lab-border pb-4">
+      <div className="flex items-center gap-4 md:gap-6 border-b border-lab-border pb-4 overflow-x-auto">
         {tabs.map(tab => {
           const Icon = tab.icon
           return (
@@ -581,7 +581,7 @@ function EmptyState({ message }) {
 function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="card-elevated w-[28rem] max-h-[85vh] overflow-y-auto">
+      <div className="card-elevated w-full max-w-md mx-4 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-lab-text-primary">{title}</h2>
           <button onClick={onClose} className="text-lab-text-muted hover:text-lab-text-secondary transition-subtle">

@@ -73,7 +73,7 @@ export function Office() {
               <p className="text-sm text-lab-text-faint">No agents available</p>
             </div>
           ) : (
-            <div className="grid gap-12" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12">
               {deskPositions.map(({ agent, row, col }) => (
                 <div key={agent.id} className="relative">
                   {/* Desk */}

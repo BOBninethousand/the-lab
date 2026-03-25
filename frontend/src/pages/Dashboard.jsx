@@ -125,7 +125,7 @@ export function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Agents Online" value={`${onlineAgents}/${onlineAgents}`} isLoading={isLoading} />
         <StatCard label="Total Reports" value={reportStats?.total ?? 0} isLoading={isLoading} />
         <StatCard label="Reports Today" value={reportStats?.today ?? 0} isLoading={isLoading} />
@@ -300,7 +300,7 @@ export function Dashboard() {
       </div>
 
       {/* Main content grid */}
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column — Agents + Schedule */}
         <div className="col-span-2 space-y-6">
           {/* Agents */}

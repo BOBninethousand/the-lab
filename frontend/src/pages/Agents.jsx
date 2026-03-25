@@ -272,7 +272,7 @@ export function Agents() {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[...Array(4)].map((_, i) => <div key={i} className="h-48 bg-lab-surface rounded animate-pulse" />)}
           </div>
         ) : agents.length === 0 ? (
@@ -283,7 +283,7 @@ export function Agents() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {agents.map(agent => {
               const stats = agentStats[agent.id] || {}
               const isWorking = agent.status === 'working'
@@ -368,7 +368,7 @@ export function Agents() {
 
       {/* Chat panel — FIXED: proper scroll container with constrained height */}
       {selectedAgent && (
-        <div className="w-[420px] flex-shrink-0 flex flex-col h-full border-l border-lab-border bg-lab-surface">
+        <div className="w-full md:w-[360px] lg:w-[420px] flex-shrink-0 flex flex-col h-full border-l border-lab-border bg-lab-surface">
           {/* Header — fixed */}
           <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-lab-border">
             <div className="flex items-center gap-3">

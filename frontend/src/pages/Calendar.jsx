@@ -144,9 +144,9 @@ export function Calendar() {
   }
 
   return (
-    <div className="flex gap-6 h-[calc(100vh-120px)]">
+    <div className="flex flex-col md:flex-row gap-6 h-auto md:h-[calc(100vh-120px)]">
       {/* Left Panel — Job List */}
-      <div className="w-80 flex-shrink-0 flex flex-col">
+      <div className="w-full md:w-72 lg:w-80 flex-shrink-0 flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-section-label">Scheduled Jobs</h2>
           <button
