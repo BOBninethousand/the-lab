@@ -1070,8 +1070,14 @@ async def _ensure_agent_map():
         pass
 
 
-def _session_key_to_agent(session_key: str):
-    """Extract agent name from sessionKey like 'Scout:main'."""
+def _find_agent_in_key(session_key: str):
+    """Find a known agent name inside a sessionKey of any format.
+    Agent Bus uses keys like 'Scout:the-lab', Claw3D might send 'agent:Scout:the-lab:main', etc."""
+    key_lower = session_key.lower()
+    for name in _agent_name_to_id:
+        if name.lower() in key_lower:
+            return name
+    # Fallback: try first segment
     return session_key.split(":")[0] if ":" in session_key else session_key
 
 
@@ -1081,9 +1087,11 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
     params = msg.get("params", {})
     session_key = params.get("sessionKey", "")
     message = params.get("message", params.get("content", ""))
-    agent_name = _session_key_to_agent(session_key)
+
+    print(f"[chat-bridge] chat.send params: {json.dumps(params)[:500]}")
 
     await _ensure_agent_map()
+    agent_name = _find_agent_in_key(session_key)
     agent_id = _agent_name_to_id.get(agent_name)
 
     if not agent_id:
