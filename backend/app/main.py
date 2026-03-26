@@ -1166,12 +1166,10 @@ async def claw3d_ws_proxy(ws: WebSocket):
 
                         if method == "chat.send":
                             await _handle_chat_send(ws, msg)
-                        elif method == "chat.history":
-                            await _handle_chat_history(ws, msg)
-                        elif method in ("skills.status",):
-                            await ws.send_text(json.dumps({
-                                "type": "res", "id": msg.get("id", ""), "ok": True, "payload": {}}))
                         else:
+                            # Pass everything else to Agent Bus (including chat.history,
+                            # skills.status — Agent Bus returns "Unknown method" which
+                            # Claw3D handles gracefully. Our intercepted responses crashed it.)
                             await upstream.send(data)
                 except Exception:
                     pass
