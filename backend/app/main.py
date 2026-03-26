@@ -1123,14 +1123,13 @@ async def claw3d_assets_proxy(request: Request, path: str):
 
 
 # --- CLAW3D API PROXY ---
-# Claw3D's custom server handles /api/studio and /api/office/* outside Next.js basePath.
-# Without these routes, requests hit the SPA catch-all and return HTML instead of JSON,
-# causing "Cannot read properties of null (reading 'settings')" and locked interactions.
+# With basePath: '/claw3d', ALL Claw3D routes (pages, API, assets) are prefixed.
+# The proxy must forward with the /claw3d/ prefix for Claw3D to find them.
 
 @app.api_route("/api/studio", methods=["GET", "POST", "PUT"])
 async def claw3d_studio_proxy(request: Request):
     """Proxy Claw3D studio settings API."""
-    url = "/api/studio"
+    url = "/claw3d/api/studio"
     if request.url.query:
         url = f"{url}?{request.url.query}"
     try:
@@ -1149,7 +1148,7 @@ async def claw3d_studio_proxy(request: Request):
 @app.api_route("/api/office/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def claw3d_office_api_proxy(request: Request, path: str):
     """Proxy Claw3D office API (layout, preferences, standup)."""
-    url = f"/api/office/{path}"
+    url = f"/claw3d/api/office/{path}"
     if request.url.query:
         url = f"{url}?{request.url.query}"
     try:
