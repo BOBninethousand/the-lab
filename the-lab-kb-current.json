@@ -1,0 +1,68 @@
+[
+  {
+    "title": "HDL — Current Phase & Status",
+    "category": "fact",
+    "content": "Current phase: SELL NOW. Platform live. Stripe working. 0 paying customers. 0 calls completed. These current offerings, setups, and strategies are experimental and seem to be the best approach for now, but will most likely evolve.",
+    "tags": "hdl, status, current-status"
+  },
+  {
+    "title": "HDL — Current Traction",
+    "category": "fact",
+    "content": "IIPA talk delivered (25-50 attendees). 9 sign-ups, ~4-5 completed forms. 3 nudges sent, 0 replies. Three consecutive weeks of zero external traction as of 20 March 2026.",
+    "tags": "hdl, traction, current-status"
+  },
+  {
+    "title": "HDL — Current Pricing (Draft)",
+    "category": "reference",
+    "content": "Four tiers (current draft offering): (1) Launchpad: Free (1st 3 months) → £19/mo, 3 credits/mo. (2) Minimum: £99/mo, 15 credits/mo. (3) Course (recommended): Standard £997 or Super Early £597 (3×£199), 30 credits/mo. (4) Signature: Standard £2,497 or Super Early £1,497 (6×£250), Unlimited credits. Super Early: 25 seats. Founding: 150 seats. Locked for life.",
+    "tags": "hdl, pricing, current-status"
+  },
+  {
+    "title": "HDL — Current Launch Strategy",
+    "category": "reference",
+    "content": "Launch via IrisLab 2,000 list with mini-workshop funnel. Sequence: (1) Finalise homepage v5.1 implementation. (2) Script and film mini-workshop (30-40 min). (3) Build application form. (4) Send to list. (5) Select 10 beta practitioners. (6) Start Cohort 1 (3+9 format). Critical blocker: mini-workshop must exist before list send.",
+    "tags": "hdl, launch, strategy, current-status"
+  },
+  {
+    "title": "HDL — Current Refund Model",
+    "category": "reference",
+    "content": "For initial launch: £597 upfront. Beta/1st few get full refund for active completers. Some get 50% refund for active participation. Non-completers keep access, no refund.",
+    "tags": "hdl, pricing, launch, current-status"
+  },
+  {
+    "title": "HDL — Current Course Structure",
+    "category": "reference",
+    "content": "3+9 format: 3-week intensive + 9-week implementation. Refund model for beta cohort. Course outline drafted, needs Matthew's sign-off. This structure is experimental and will evolve.",
+    "tags": "hdl, course, current-status"
+  },
+  {
+    "title": "HDL — Current Blockers",
+    "category": "fact",
+    "content": "(1) Mini-workshop script + filming not started — #1 blocker. (2) Homepage v5.1 implementation pending. (3) Application form not built. (4) Welcome email sequence not written. (5) 3 explainer videos not yet embedded on site.",
+    "tags": "hdl, blockers, current-status"
+  },
+  {
+    "title": "Current Financial Position",
+    "category": "fact",
+    "content": "Income close to zero. Living off selling crypto (not sustainable). Target: £20k/month by March 2027.",
+    "tags": "matthew, finance, current-status"
+  },
+  {
+    "title": "Key Relationships — Current Focus",
+    "category": "reference",
+    "content": "IIPA (~100-150 members): highest-value, warm community. Leadership floated longevity summit. Treat with care, lead with generosity. IrisLab list (~2,000): broader, colder. 1st distribution channel for HDL launch. Do not email until workshop + homepage ready.",
+    "tags": "relationships, iipa, irislab, current-status"
+  },
+  {
+    "title": "HDL — Current Positioning",
+    "category": "reference",
+    "content": "'Add-on layer' to existing practice. Core message: 'You already see the whole person. Now you can prove it.' Headline: 'From Healing to Thriving.' Can be consultation, add-on, or programme.",
+    "tags": "hdl, positioning, current-status"
+  },
+  {
+    "title": "Altituding — Current Status",
+    "category": "fact",
+    "content": "PARKED until ~May 2026. Three tiers drafted: Minimum £399, Trajectory £2,497, Signature £9,997. No active promotional effort.",
+    "tags": "altituding, status, current-status"
+  }
+]
