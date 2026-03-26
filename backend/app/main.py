@@ -1044,13 +1044,44 @@ async def notion_sync_knowledge(data: dict):
 
 
 # --- CLAW3D REVERSE PROXY ---
+# Claw3D is patched with basePath: '/claw3d' so all its routes are under /claw3d/*
+# This proxy forwards /claw3d/* HTTP requests and /claw3d/api/gateway/ws WebSocket
+import websockets as _ws_lib
+
 CLAW3D_URL = os.getenv("CLAW3D_URL", "http://claw3d:3000")
+CLAW3D_WS_URL = os.getenv("CLAW3D_WS_URL", "ws://claw3d:3000")
 _claw3d_client = httpx.AsyncClient(base_url=CLAW3D_URL, timeout=30.0)
+
+@app.websocket("/claw3d/api/gateway/ws")
+async def claw3d_ws_proxy(ws: WebSocket):
+    """WebSocket proxy: browser <-> Claw3D gateway proxy."""
+    await ws.accept()
+    try:
+        async with _ws_lib.connect(f"{CLAW3D_WS_URL}/api/gateway/ws") as upstream:
+            async def browser_to_upstream():
+                try:
+                    while True:
+                        data = await ws.receive_text()
+                        await upstream.send(data)
+                except Exception:
+                    pass
+
+            async def upstream_to_browser():
+                try:
+                    async for msg in upstream:
+                        await ws.send_text(msg)
+                except Exception:
+                    pass
+
+            await asyncio.gather(browser_to_upstream(), upstream_to_browser())
+    except Exception:
+        pass
 
 @app.api_route("/claw3d/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def claw3d_proxy(request: Request, path: str):
-    """Reverse proxy to Claw3D container for iframe embedding."""
-    url = f"/{path}"
+    """HTTP reverse proxy to Claw3D container (basePath: /claw3d)."""
+    # Forward with /claw3d prefix — Claw3D expects it due to basePath config
+    url = f"/claw3d/{path}"
     if request.url.query:
         url = f"{url}?{request.url.query}"
     try:
