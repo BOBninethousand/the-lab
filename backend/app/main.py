@@ -2,10 +2,11 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+import httpx
 
 from app.config import settings
 from app.models import (
@@ -1040,6 +1041,34 @@ async def notion_sync_knowledge(data: dict):
     if not result:
         raise HTTPException(status_code=404, detail="Page not found")
     return result
+
+
+# --- CLAW3D REVERSE PROXY ---
+CLAW3D_URL = os.getenv("CLAW3D_URL", "http://claw3d:3000")
+_claw3d_client = httpx.AsyncClient(base_url=CLAW3D_URL, timeout=30.0)
+
+@app.api_route("/claw3d/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+async def claw3d_proxy(request: Request, path: str):
+    """Reverse proxy to Claw3D container for iframe embedding."""
+    url = f"/{path}"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+    try:
+        resp = await _claw3d_client.request(
+            method=request.method,
+            url=url,
+            headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "connection")},
+            content=await request.body() if request.method in ("POST", "PUT", "PATCH") else None,
+        )
+        excluded = {"transfer-encoding", "connection", "content-encoding"}
+        headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+        return StreamingResponse(
+            content=iter([resp.content]),
+            status_code=resp.status_code,
+            headers=headers,
+        )
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Claw3D service unavailable")
 
 
 # --- STATIC FILES (serve frontend) ---

@@ -13,6 +13,44 @@ services:
       - ./backend/data:/app/backend/data
     restart: unless-stopped
 
+  # --- 3D Office (Claw3D) ---
+
+  agent-bus:
+    build:
+      context: ./services/agent-bus
+    ports:
+      - "4000:4000"
+      - "18789:18789"
+    restart: unless-stopped
+
+  claw3d:
+    build:
+      context: ./services/claw3d
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_GATEWAY_URL=ws://agent-bus:18789
+      - DEBUG=true
+      - HOST=0.0.0.0
+      - PORT=3000
+    depends_on:
+      - agent-bus
+    restart: unless-stopped
+
+  bridge:
+    build:
+      context: ./services/bridge
+    environment:
+      - LAB_WS_URL=ws://the-lab:8000/ws
+      - AGENT_BUS_URL=http://agent-bus:4000/events
+      - HEARTBEAT_INTERVAL=30
+    depends_on:
+      - the-lab
+      - agent-bus
+    restart: unless-stopped
+
+  # --- Optional ---
+
   ollama:
     image: ollama/ollama
     ports:
