@@ -1102,6 +1102,26 @@ async def claw3d_proxy(request: Request, path: str):
         raise HTTPException(status_code=502, detail="Claw3D service unavailable")
 
 
+# --- CLAW3D ASSET PROXY ---
+# Three.js useGLTF() requests /office-assets/*.glb with absolute paths (no basePath prefix).
+# Without this route, the catch-all SPA handler returns index.html instead of the GLB binary.
+@app.api_route("/office-assets/{path:path}", methods=["GET"])
+async def claw3d_assets_proxy(request: Request, path: str):
+    """Proxy 3D model/asset files to Claw3D container."""
+    url = f"/claw3d/office-assets/{path}"
+    try:
+        resp = await _claw3d_client.request(method="GET", url=url)
+        excluded = {"transfer-encoding", "connection", "content-encoding"}
+        headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+        return StreamingResponse(
+            content=iter([resp.content]),
+            status_code=resp.status_code,
+            headers=headers,
+        )
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Claw3D service unavailable")
+
+
 # --- STATIC FILES (serve frontend) ---
 # Navigate from backend/app/ → backend/ → project root → frontend/dist
 _app_dir = os.path.dirname(os.path.abspath(__file__))          # backend/app/
