@@ -1086,9 +1086,21 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
     req_id = msg.get("id", "")
     params = msg.get("params", {})
     session_key = params.get("sessionKey", "")
-    message = params.get("message", params.get("content", ""))
 
-    print(f"[chat-bridge] chat.send params: {json.dumps(params)[:500]}")
+    # Extract message text robustly — handle string, object, or array
+    raw_msg = params.get("message", params.get("content", ""))
+    if isinstance(raw_msg, dict):
+        content = raw_msg.get("content", raw_msg.get("text", str(raw_msg)))
+        if isinstance(content, list):
+            message = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+        else:
+            message = str(content)
+    elif isinstance(raw_msg, list):
+        message = " ".join(c.get("text", str(c)) for c in raw_msg if c)
+    else:
+        message = str(raw_msg)
+
+    print(f"[chat-bridge] chat.send: session_key={session_key} message={message[:100]}")
 
     await _ensure_agent_map()
     agent_name = _find_agent_in_key(session_key)
@@ -1099,8 +1111,13 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
             "error": {"code": "agent_not_found", "message": f"Agent '{agent_name}' not found"}}))
         return
 
-    # Acknowledge the request immediately
-    await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": True}))
+    run_id = str(uuid.uuid4())
+
+    # Include runId in acknowledgment so Claw3D can track the run
+    await ws.send_text(json.dumps({
+        "type": "res", "id": req_id, "ok": True,
+        "payload": {"runId": run_id}
+    }))
 
     # Call The Lab's chat API
     try:
@@ -1115,8 +1132,9 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
     except Exception as e:
         response_text = f"Error: {e}"
 
-    # Send response as OpenClaw runtime-chat event
-    run_id = str(uuid.uuid4())
+    print(f"[chat-bridge] response for {agent_name}: {response_text[:100]}")
+
+    # Send response with stopReason for terminal state recognition
     await ws.send_text(json.dumps({
         "type": "event",
         "event": "runtime-chat",
@@ -1124,8 +1142,12 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
             "runId": run_id,
             "sessionKey": session_key,
             "seq": 1,
-            "message": {"role": "assistant", "content": [{"type": "text", "text": response_text}]},
+            "stopReason": "end_turn",
             "state": "final",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": response_text}]
+            }
         }
     }))
 
@@ -1174,10 +1196,15 @@ async def claw3d_ws_proxy(ws: WebSocket):
 
                         if method == "chat.send":
                             await _handle_chat_send(ws, msg)
+                        elif method == "chat.history":
+                            # Return empty history so Claw3D can init run state tracking
+                            # (bare array, NOT {"messages": []} which crashed before)
+                            await ws.send_text(json.dumps({
+                                "type": "res", "id": msg.get("id", ""),
+                                "ok": True, "payload": []
+                            }))
                         else:
-                            # Pass everything else to Agent Bus (including chat.history,
-                            # skills.status — Agent Bus returns "Unknown method" which
-                            # Claw3D handles gracefully. Our intercepted responses crashed it.)
+                            # Pass everything else to Agent Bus
                             await upstream.send(data)
                 except Exception:
                     pass
