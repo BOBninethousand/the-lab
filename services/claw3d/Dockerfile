@@ -32,6 +32,12 @@ COPY AgentChatPanel.tsx src/features/agents/components/AgentChatPanel.tsx
 RUN mkdir -p src/app/api/lab-chat
 COPY lab-chat-route.ts src/app/api/lab-chat/route.ts
 
+# 6. Rebrand office title from Claw3D default to The Lab
+RUN sed -i 's/Luke Headquarters/The Lab HQ/g' \
+    src/lib/studio/settings.ts \
+    src/features/retro-office/RetroOffice3D.tsx \
+    src/features/office/components/panels/SettingsPanel.tsx
+
 # --- Build ---
 
 # Build-time env (NEXT_PUBLIC_* baked into Next.js client bundle)
