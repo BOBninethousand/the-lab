@@ -4,19 +4,17 @@
  * Uses HTTP to The Lab's /api/chat instead of OpenClaw WebSocket protocol.
  * Same props interface as the original so the parent component doesn't break.
  */
-import { memo, useCallback, useRef, useState, useEffect } from "react";
+import React, { memo, useCallback, useRef, useState, useEffect } from "react";
 import type { AgentState as AgentRecord } from "@/features/agents/state/store";
-import { Mic, Send, X } from "lucide-react";
 import { AgentAvatar } from "./AgentAvatar";
 
 type ChatMessage = { role: "user" | "assistant"; content: string; ts: number };
 
-// Props interface matching the original AgentChatPanel so the parent's type inference works
 type AgentChatPanelProps = {
   agent: AgentRecord;
   isSelected?: boolean;
   canSend?: boolean;
-  models?: any[];
+  models?: unknown[];
   stopBusy?: boolean;
   stopDisabledReason?: string | null;
   onLoadMoreHistory?: () => void;
@@ -32,15 +30,16 @@ type AgentChatPanelProps = {
   onRemoveQueuedMessage?: (index: number) => void;
   onStopRun?: () => void;
   onAvatarShuffle?: () => void;
-  pendingExecApprovals?: any[];
-  onResolveExecApproval?: (id: string, decision: any) => void;
-  onVoiceSend?: (payload: any) => Promise<void>;
+  pendingExecApprovals?: unknown[];
+  onResolveExecApproval?: (id: string, decision: unknown) => void;
+  onVoiceSend?: (payload: unknown) => Promise<void>;
 };
 
-function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSend, ...rest }: AgentChatPanelProps) {
+function AgentChatPanelInner(props: AgentChatPanelProps) {
+  const { agent, onNewSession } = props;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  const [draft, setDraft] = useState<string>("");
+  const [sending, setSending] = useState<boolean>(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,7 +52,7 @@ function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSe
 
     setDraft("");
     setSending(true);
-    setMessages((prev) => [...prev, { role: "user", content: msg, ts: Date.now() }]);
+    setMessages((prev: ChatMessage[]) => [...prev, { role: "user" as const, content: msg, ts: Date.now() }]);
 
     try {
       const resp = await fetch("/claw3d/api/lab-chat", {
@@ -63,40 +62,47 @@ function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSe
       });
       const data = await resp.json();
       if (data.response) {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.response, ts: Date.now() }]);
+        setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant" as const, content: data.response, ts: Date.now() }]);
       } else if (data.error) {
-        setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.error}`, ts: Date.now() }]);
+        setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant" as const, content: `Error: ${data.error}`, ts: Date.now() }]);
       }
-    } catch (e: any) {
-      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${e.message}`, ts: Date.now() }]);
+    } catch (err: unknown) {
+      const msg2 = err instanceof Error ? err.message : String(err);
+      setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant" as const, content: `Error: ${msg2}`, ts: Date.now() }]);
     } finally {
       setSending(false);
     }
   }, [draft, sending, agent.name]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
+  const handleNewSession = useCallback(() => {
+    if (onNewSession) void onNewSession();
+    setMessages([]);
+  }, [onNewSession]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0c0c14" }}>
       {/* Header */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 12 }}>
-        <AgentAvatar seed={agent.agentId || agent.name} name={agent.name} size={36} />
+        <AgentAvatar seed={agent.name} name={agent.name} size={36} />
         <div>
           <div style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}>{agent.name}</div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
             {sending ? "Thinking..." : "Online"}
           </div>
         </div>
-        {onNewSession && (
-          <button onClick={onNewSession} style={{ marginLeft: "auto", fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}>
-            New session
-          </button>
-        )}
+        <button
+          onClick={handleNewSession}
+          style={{ marginLeft: "auto", fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}
+        >
+          New session
+        </button>
       </div>
 
       {/* Messages */}
@@ -106,7 +112,7 @@ function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSe
             Send a message to {agent.name}
           </div>
         )}
-        {messages.map((m, i) => (
+        {messages.map((m: ChatMessage, i: number) => (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginBottom: 2 }}>
               {m.role === "user" ? "You" : agent.name}
@@ -117,8 +123,8 @@ function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSe
               borderRadius: 10,
               fontSize: 13,
               lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
+              whiteSpace: "pre-wrap" as const,
+              wordBreak: "break-word" as const,
               background: m.role === "user" ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.06)",
               color: m.role === "user" ? "rgba(147,197,253,0.95)" : "rgba(255,255,255,0.85)",
               border: `1px solid ${m.role === "user" ? "rgba(59,130,246,0.2)" : "rgba(255,255,255,0.06)"}`,
@@ -129,7 +135,7 @@ function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSe
         ))}
         {sending && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, color: "rgba(255,255,255,0.3)", fontSize: 12 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(16,185,129,0.6)", animation: "pulse 1.5s infinite" }} />
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(16,185,129,0.6)" }} />
             {agent.name} is thinking...
           </div>
         )}
@@ -140,12 +146,12 @@ function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSe
       <div style={{ padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: 8, alignItems: "flex-end" }}>
         <textarea
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={`Message ${agent.name}...`}
           rows={1}
           style={{
-            flex: 1, resize: "none", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+            flex: 1, resize: "none" as const, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
             borderRadius: 8, padding: "8px 12px", color: "#fff", fontSize: 13, outline: "none",
             fontFamily: "inherit",
           }}
