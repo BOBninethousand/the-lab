@@ -1053,131 +1053,11 @@ CLAW3D_URL = os.getenv("CLAW3D_URL", "http://claw3d:3000")
 CLAW3D_WS_URL = os.getenv("CLAW3D_WS_URL", "ws://claw3d:3000")
 _claw3d_client = httpx.AsyncClient(base_url=CLAW3D_URL, timeout=30.0)
 
-# Agent name→id cache for chat bridge
-_agent_name_to_id = {}
-
-async def _ensure_agent_map():
-    """Build agent name→id lookup from agent_manager directly."""
-    if _agent_name_to_id:
-        return
-    try:
-        for a in agent_manager.list_agents():
-            _agent_name_to_id[a.name] = a.id
-    except Exception:
-        pass
-
-
-def _find_agent_in_key(session_key: str):
-    """Find a known agent name inside a sessionKey of any format.
-    Agent Bus uses keys like 'Scout:the-lab', Claw3D might send 'agent:Scout:the-lab:main', etc."""
-    key_lower = session_key.lower()
-    for name in _agent_name_to_id:
-        if name.lower() in key_lower:
-            return name
-    # Fallback: try first segment
-    return session_key.split(":")[0] if ":" in session_key else session_key
-
-
-async def _handle_chat_send(ws: WebSocket, msg: dict):
-    """Intercept chat.send → route to The Lab's /api/chat."""
-    req_id = msg.get("id", "")
-    params = msg.get("params", {})
-    session_key = params.get("sessionKey", "")
-
-    # Extract message text robustly — handle string, object, or array
-    raw_msg = params.get("message", params.get("content", ""))
-    if isinstance(raw_msg, dict):
-        content = raw_msg.get("content", raw_msg.get("text", str(raw_msg)))
-        if isinstance(content, list):
-            message = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
-        else:
-            message = str(content)
-    elif isinstance(raw_msg, list):
-        message = " ".join(c.get("text", str(c)) for c in raw_msg if c)
-    else:
-        message = str(raw_msg)
-
-    print(f"[chat-bridge] chat.send: session_key={session_key} message={message[:100]}")
-
-    await _ensure_agent_map()
-    agent_name = _find_agent_in_key(session_key)
-    agent_id = _agent_name_to_id.get(agent_name)
-
-    if not agent_id:
-        await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": False,
-            "error": {"code": "agent_not_found", "message": f"Agent '{agent_name}' not found"}}))
-        return
-
-    run_id = str(uuid.uuid4())
-
-    # Include runId in acknowledgment so Claw3D can track the run
-    await ws.send_text(json.dumps({
-        "type": "res", "id": req_id, "ok": True,
-        "payload": {"runId": run_id}
-    }))
-
-    # Call agent_manager directly (no HTTP round-trip, avoids 20s+ async delay)
-    try:
-        agent_manager.update_status(agent_id, "working", "Responding to chat")
-        response_text = await agent_manager.chat_async(agent_id, message)
-        agent_manager.update_status(agent_id, "idle", None)
-    except Exception as e:
-        response_text = f"Error: {e}"
-        agent_manager.update_status(agent_id, "error", str(e))
-
-    print(f"[chat-bridge] response for {agent_name}: {response_text[:100]}")
-
-    # Send response THROUGH Agent Bus pipeline (not directly to browser WS).
-    # Claw3D's chat panel reads from agent.outputLines which is only populated
-    # by events that come through the gateway's event processing pipeline.
-    # Direct ws.send_text() events bypass this pipeline and never reach outputLines.
-    AGENT_BUS_URL = os.getenv("AGENT_BUS_URL", "http://agent-bus:4000/events")
-    try:
-        async with httpx.AsyncClient() as c:
-            # Send as tool_use so it appears in the agent's activity stream
-            await c.post(AGENT_BUS_URL, json={
-                "agent": agent_name, "project": "the-lab",
-                "event": "tool_use", "tool": "chat",
-                "message": response_text
-            }, timeout=5.0)
-            # Send task_complete to finalize
-            await c.post(AGENT_BUS_URL, json={
-                "agent": agent_name, "project": "the-lab",
-                "event": "task_complete",
-                "message": response_text[:200]
-            }, timeout=5.0)
-        print(f"[chat-bridge] sent response via Agent Bus for {agent_name}")
-    except Exception as e:
-        print(f"[chat-bridge] failed to send via Agent Bus: {e}")
-
-
-async def _handle_chat_history(ws: WebSocket, msg: dict):
-    """Intercept chat.history → route to The Lab's chat history API."""
-    req_id = msg.get("id", "")
-    params = msg.get("params", {})
-    session_key = params.get("sessionKey", "")
-    agent_name = _session_key_to_agent(session_key)
-
-    await _ensure_agent_map()
-    agent_id = _agent_name_to_id.get(agent_name)
-
-    if not agent_id:
-        await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": True, "payload": {"messages": []}}))
-        return
-
-    try:
-        async with httpx.AsyncClient() as c:
-            r = await c.get(f"http://localhost:8000/api/chat/{agent_id}/history", timeout=10.0)
-            history = r.json() if r.status_code == 200 else []
-    except Exception:
-        history = []
-
-    await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": True, "payload": {"messages": history}}))
-
-
 @app.websocket("/claw3d/api/gateway/ws")
 async def claw3d_ws_proxy(ws: WebSocket):
-    """WebSocket proxy with chat interception: browser <-> Claw3D/Agent Bus."""
+    """WebSocket relay: browser <-> Claw3D Studio <-> Agent Bus gateway.
+    Chat is now handled by the patched AgentChatPanel (HTTP to /claw3d/api/lab-chat)
+    so the WS proxy is a clean relay — no interception needed."""
     await ws.accept()
     try:
         async with _ws_lib.connect(f"{CLAW3D_WS_URL}/api/gateway/ws") as upstream:
@@ -1185,26 +1065,7 @@ async def claw3d_ws_proxy(ws: WebSocket):
                 try:
                     while True:
                         data = await ws.receive_text()
-                        try:
-                            msg = json.loads(data)
-                        except (json.JSONDecodeError, TypeError):
-                            await upstream.send(data)
-                            continue
-
-                        method = msg.get("method", "") if msg.get("type") == "req" else ""
-
-                        if method == "chat.send":
-                            await _handle_chat_send(ws, msg)
-                        elif method == "chat.history":
-                            # Return empty history so Claw3D can init run state tracking
-                            # (bare array, NOT {"messages": []} which crashed before)
-                            await ws.send_text(json.dumps({
-                                "type": "res", "id": msg.get("id", ""),
-                                "ok": True, "payload": []
-                            }))
-                        else:
-                            # Pass everything else to Agent Bus
-                            await upstream.send(data)
+                        await upstream.send(data)
                 except Exception:
                     pass
 

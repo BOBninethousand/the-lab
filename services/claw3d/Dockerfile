@@ -23,6 +23,15 @@ RUN sed -i 's/const nextConfig: NextConfig = {};/const nextConfig: NextConfig = 
 # Source: src/lib/gateway/proxy-url.ts hardcodes "/api/gateway/ws"
 RUN sed -i 's|/api/gateway/ws|/claw3d/api/gateway/ws|' src/lib/gateway/proxy-url.ts
 
+# 4. Replace AgentChatPanel with HTTP-based chat (The Lab's /api/chat)
+# Claw3D's original uses OpenClaw WebSocket protocol which we can't bridge.
+# This replacement calls The Lab's API directly via a Next.js API route.
+COPY AgentChatPanel.tsx src/features/agents/components/AgentChatPanel.tsx
+
+# 5. Add Next.js API route for lab chat proxy (server-side fetch to The Lab)
+RUN mkdir -p src/app/api/lab-chat
+COPY lab-chat-route.ts src/app/api/lab-chat/route.ts
+
 # --- Build ---
 
 # Build-time env (NEXT_PUBLIC_* baked into Next.js client bundle)
