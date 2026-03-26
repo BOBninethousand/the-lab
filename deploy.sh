@@ -20,7 +20,7 @@ docker build -t the-lab .
 
 # Start
 echo "  Starting containers..."
-docker compose up -d
+docker compose up -d --build --remove-orphans
 
 # Get local IP
 LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')

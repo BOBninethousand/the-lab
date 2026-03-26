@@ -12,9 +12,9 @@ while true; do
   if [ "$LOCAL" != "$REMOTE" ]; then
     echo "$(date) — New changes detected, deploying..."
     git pull origin main
-    docker compose down
+    docker compose down --remove-orphans
     docker compose build --no-cache
-    docker compose up -d
+    docker compose up -d --build --remove-orphans
     echo "$(date) — Deploy complete!"
   fi
 
