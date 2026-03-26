@@ -40,10 +40,20 @@ type AgentChatPanelProps = {
 
 function AgentChatPanelInner(props: AgentChatPanelProps) {
   const { agent, onNewSession } = props;
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Store messages PER AGENT so switching agents shows the right history
+  const [messagesByAgent, setMessagesByAgent] = useState<Record<string, ChatMessage[]>>({});
   const [draft, setDraft] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const messages = messagesByAgent[agent.name] || [];
+
+  const addMessage = useCallback((agentName: string, msg: ChatMessage) => {
+    setMessagesByAgent((prev: Record<string, ChatMessage[]>) => ({
+      ...prev,
+      [agentName]: [...(prev[agentName] || []), msg],
+    }));
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -52,26 +62,27 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
   const handleSend = useCallback(async () => {
     const msg = draft.trim();
     if (!msg || sending) return;
+    const currentAgent = agent.name;
 
     setDraft("");
     setSending(true);
-    setMessages((prev: ChatMessage[]) => [...prev, { role: "user" as const, content: msg, ts: Date.now() }]);
+    addMessage(currentAgent, { role: "user" as const, content: msg, ts: Date.now() });
 
     try {
       const resp = await fetch("/claw3d/api/lab-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentName: agent.name, message: msg }),
+        body: JSON.stringify({ agentName: currentAgent, message: msg }),
       });
       const data = await resp.json();
       if (data.response) {
-        setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant" as const, content: data.response, ts: Date.now() }]);
+        addMessage(currentAgent, { role: "assistant" as const, content: data.response, ts: Date.now() });
       } else if (data.error) {
-        setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant" as const, content: `Error: ${data.error}`, ts: Date.now() }]);
+        addMessage(currentAgent, { role: "assistant" as const, content: `Error: ${data.error}`, ts: Date.now() });
       }
     } catch (err: unknown) {
       const msg2 = err instanceof Error ? err.message : String(err);
-      setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant" as const, content: `Error: ${msg2}`, ts: Date.now() }]);
+      addMessage(currentAgent, { role: "assistant" as const, content: `Error: ${msg2}`, ts: Date.now() });
     } finally {
       setSending(false);
     }
@@ -86,8 +97,8 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
 
   const handleNewSession = useCallback(() => {
     if (onNewSession) void onNewSession();
-    setMessages([]);
-  }, [onNewSession]);
+    setMessagesByAgent((prev: Record<string, ChatMessage[]>) => ({ ...prev, [agent.name]: [] }));
+  }, [onNewSession, agent.name]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0c0c14" }}>
