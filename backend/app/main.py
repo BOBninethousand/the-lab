@@ -1057,15 +1057,12 @@ _claw3d_client = httpx.AsyncClient(base_url=CLAW3D_URL, timeout=30.0)
 _agent_name_to_id = {}
 
 async def _ensure_agent_map():
-    """Build agent name→id lookup from The Lab's API."""
+    """Build agent name→id lookup from agent_manager directly."""
     if _agent_name_to_id:
         return
     try:
-        async with httpx.AsyncClient() as c:
-            r = await c.get("http://localhost:8000/api/agents", timeout=5.0)
-            if r.status_code == 200:
-                for a in r.json():
-                    _agent_name_to_id[a["name"]] = a["id"]
+        for a in agent_manager.list_agents():
+            _agent_name_to_id[a.name] = a.id
     except Exception:
         pass
 
@@ -1119,18 +1116,14 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
         "payload": {"runId": run_id}
     }))
 
-    # Call The Lab's chat API
+    # Call agent_manager directly (no HTTP round-trip, avoids 20s+ async delay)
     try:
-        async with httpx.AsyncClient() as c:
-            r = await c.post("http://localhost:8000/api/chat",
-                json={"agent_id": agent_id, "message": message}, timeout=120.0)
-            if r.status_code == 200:
-                data = r.json()
-                response_text = data.get("response", "")
-            else:
-                response_text = f"Error: HTTP {r.status_code}"
+        agent_manager.update_status(agent_id, "working", "Responding to chat")
+        response_text = await agent_manager.chat_async(agent_id, message)
+        agent_manager.update_status(agent_id, "idle", None)
     except Exception as e:
         response_text = f"Error: {e}"
+        agent_manager.update_status(agent_id, "error", str(e))
 
     print(f"[chat-bridge] response for {agent_name}: {response_text[:100]}")
 
