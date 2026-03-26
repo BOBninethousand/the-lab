@@ -1044,6 +1044,48 @@ async def notion_sync_knowledge(data: dict):
     return result
 
 
+# --- VOICE (OpenAI Whisper STT + TTS) ---
+from fastapi import UploadFile, File
+from fastapi.responses import Response
+from openai import AsyncOpenAI
+
+_openai_voice = AsyncOpenAI()
+
+@app.post("/api/voice/transcribe")
+async def voice_transcribe(file: UploadFile = File(...)):
+    """Transcribe audio to text using OpenAI Whisper."""
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+    try:
+        transcript = await _openai_voice.audio.transcriptions.create(
+            model="whisper-1",
+            file=(file.filename or "audio.webm", audio_bytes, file.content_type or "audio/webm"),
+        )
+        return {"transcript": transcript.text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+
+@app.post("/api/voice/speak")
+async def voice_speak(request: Request):
+    """Generate speech audio from text using OpenAI TTS."""
+    data = await request.json()
+    text = data.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    voice = data.get("voice", "alloy")
+    try:
+        response = await _openai_voice.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=text[:4096],  # OpenAI TTS limit
+        )
+        return Response(content=response.content, media_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS failed: {e}")
+
+
 # --- CLAW3D REVERSE PROXY ---
 # Claw3D is patched with basePath: '/claw3d' so all its routes are under /claw3d/*
 # This proxy forwards /claw3d/* HTTP requests and /claw3d/api/gateway/ws WebSocket

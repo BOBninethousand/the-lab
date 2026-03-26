@@ -2,6 +2,7 @@
 /**
  * Lab Chat Panel — Drop-in replacement for Claw3D's AgentChatPanel.
  * Uses HTTP to The Lab's /api/chat instead of OpenClaw WebSocket protocol.
+ * Supports voice input (OpenAI Whisper) and voice output (OpenAI TTS).
  * Same props interface as the original so the parent component doesn't break.
  */
 import React, { memo, useCallback, useRef, useState, useEffect } from "react";
@@ -38,13 +39,28 @@ type AgentChatPanelProps = {
   onVoiceSend?: (payload: VoiceSendPayload) => Promise<void>;
 };
 
+// Map agent names to OpenAI TTS voices
+const AGENT_VOICES: Record<string, string> = {
+  Scout: "nova",
+  Quill: "alloy",
+  Forge: "onyx",
+  Radar: "shimmer",
+};
+
 function AgentChatPanelInner(props: AgentChatPanelProps) {
   const { agent, onNewSession } = props;
-  // Store messages PER AGENT so switching agents shows the right history
   const [messagesByAgent, setMessagesByAgent] = useState<Record<string, ChatMessage[]>>({});
   const [draft, setDraft] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Voice state
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "transcribing" | "speaking">("idle");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceInitiatedRef = useRef<boolean>(false);
 
   const messages = messagesByAgent[agent.name] || [];
 
@@ -57,7 +73,7 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
 
   // Auto-greeting: fetch agent role/goal and show welcome message on first open
   useEffect(() => {
-    if (messagesByAgent[agent.name]) return; // Already has messages
+    if (messagesByAgent[agent.name]) return;
     let cancelled = false;
     fetch(`/claw3d/api/lab-chat?agentName=${encodeURIComponent(agent.name)}`)
       .then((r) => r.json())
@@ -76,8 +92,62 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = useCallback(async () => {
-    const msg = draft.trim();
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  // --- Text-to-speech playback ---
+  const speakText = useCallback(async (text: string) => {
+    const voice = AGENT_VOICES[agent.name] || "alloy";
+    setVoiceState("speaking");
+    try {
+      const resp = await fetch("/api/voice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.slice(0, 4096), voice }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!resp.ok) {
+        setVoiceState("idle");
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      currentAudioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        currentAudioRef.current = null;
+        setVoiceState("idle");
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        currentAudioRef.current = null;
+        setVoiceState("idle");
+      };
+      await audio.play();
+    } catch {
+      setVoiceState("idle");
+    }
+  }, [agent.name]);
+
+  // Stop audio playback
+  const stopAudio = useCallback(() => {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+    setVoiceState("idle");
+  }, []);
+
+  // --- Send message (text or transcribed voice) ---
+  const sendMessage = useCallback(async (msg: string, fromVoice: boolean) => {
     if (!msg || sending) return;
     const currentAgent = agent.name;
 
@@ -95,6 +165,10 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
       const data = await resp.json();
       if (data.response) {
         addMessage(currentAgent, { role: "assistant" as const, content: data.response, ts: Date.now() });
+        // Auto-play TTS if the message was voice-initiated
+        if (fromVoice) {
+          speakText(data.response);
+        }
       } else if (data.error) {
         addMessage(currentAgent, { role: "assistant" as const, content: `Error: ${data.error}`, ts: Date.now() });
       }
@@ -104,7 +178,11 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
     } finally {
       setSending(false);
     }
-  }, [draft, sending, agent.name]);
+  }, [draft, sending, agent.name, speakText]);
+
+  const handleSend = useCallback(() => {
+    sendMessage(draft.trim(), false);
+  }, [draft, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -113,10 +191,96 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
     }
   };
 
+  // --- Voice recording ---
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size === 0) {
+          setVoiceState("idle");
+          return;
+        }
+
+        // Transcribe
+        setVoiceState("transcribing");
+        try {
+          const form = new FormData();
+          const ext = mimeType.includes("webm") ? "webm" : "mp4";
+          form.append("file", blob, `voice-note.${ext}`);
+          const resp = await fetch("/api/voice/transcribe", {
+            method: "POST",
+            body: form,
+            signal: AbortSignal.timeout(15000),
+          });
+          const data = await resp.json();
+          if (data.transcript && data.transcript.trim()) {
+            voiceInitiatedRef.current = true;
+            setVoiceState("idle");
+            sendMessage(data.transcript.trim(), true);
+          } else {
+            setVoiceState("idle");
+          }
+        } catch {
+          setVoiceState("idle");
+        }
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setVoiceState("recording");
+    } catch {
+      setVoiceState("idle");
+    }
+  }, [sendMessage]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  const handleVoiceToggle = useCallback(() => {
+    if (voiceState === "recording") {
+      stopRecording();
+    } else if (voiceState === "speaking") {
+      stopAudio();
+    } else if (voiceState === "idle" && !sending) {
+      startRecording();
+    }
+  }, [voiceState, sending, startRecording, stopRecording, stopAudio]);
+
   const handleNewSession = useCallback(() => {
     if (onNewSession) void onNewSession();
+    stopAudio();
     setMessagesByAgent((prev: Record<string, ChatMessage[]>) => ({ ...prev, [agent.name]: [] }));
-  }, [onNewSession, agent.name]);
+  }, [onNewSession, agent.name, stopAudio]);
+
+  // Voice button appearance
+  const voiceSupported = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+
+  const micIcon = voiceState === "recording"
+    ? "⏹" : voiceState === "transcribing"
+      ? "..." : voiceState === "speaking"
+        ? "🔊" : "🎤";
+
+  const micLabel = voiceState === "recording"
+    ? "Stop" : voiceState === "transcribing"
+      ? "Transcribing" : voiceState === "speaking"
+        ? "Playing" : "Voice";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0c0c14" }}>
@@ -126,7 +290,7 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
         <div>
           <div style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}>{agent.name}</div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-            {sending ? "Thinking..." : "Online"}
+            {sending ? "Thinking..." : voiceState === "recording" ? "Listening..." : voiceState === "speaking" ? "Speaking..." : "Online"}
           </div>
         </div>
         <button
@@ -136,6 +300,38 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
           New session
         </button>
       </div>
+
+      {/* Voice status bar */}
+      {voiceState !== "idle" && (
+        <div style={{
+          padding: "6px 16px",
+          fontSize: 11,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          background: voiceState === "recording" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)",
+          borderBottom: "1px solid rgba(255,255,255,0.05)",
+          color: voiceState === "recording" ? "rgba(252,165,165,0.9)" : "rgba(147,197,253,0.9)",
+        }}>
+          {voiceState === "recording" && (
+            <>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: "#ef4444",
+                animation: "pulse-dot 1s ease-in-out infinite",
+              }} />
+              Recording — tap stop to send
+            </>
+          )}
+          {voiceState === "transcribing" && "Transcribing your voice note..."}
+          {voiceState === "speaking" && (
+            <>
+              <span style={{ fontSize: 14 }}>🔊</span>
+              {agent.name} is speaking — tap to stop
+            </>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -188,6 +384,33 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
             fontFamily: "inherit",
           }}
         />
+        {/* Voice button */}
+        {voiceSupported && (
+          <button
+            onClick={handleVoiceToggle}
+            disabled={voiceState === "transcribing" || sending}
+            title={micLabel}
+            style={{
+              padding: "8px 12px", borderRadius: 8, border: "none", fontSize: 14, lineHeight: 1,
+              cursor: voiceState === "transcribing" || sending ? "default" : "pointer",
+              background: voiceState === "recording"
+                ? "rgba(239,68,68,0.3)"
+                : voiceState === "speaking"
+                  ? "rgba(16,185,129,0.3)"
+                  : "rgba(255,255,255,0.05)",
+              color: voiceState === "recording"
+                ? "rgba(252,165,165,0.9)"
+                : voiceState === "speaking"
+                  ? "rgba(110,231,183,0.9)"
+                  : "rgba(255,255,255,0.4)",
+              opacity: voiceState === "transcribing" || sending ? 0.4 : 1,
+              transition: "all 0.15s ease",
+            }}
+          >
+            {micIcon}
+          </button>
+        )}
+        {/* Send button */}
         <button
           onClick={handleSend}
           disabled={sending || !draft.trim()}
@@ -201,6 +424,14 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
           Send
         </button>
       </div>
+
+      {/* Keyframe for recording pulse */}
+      <style>{`
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.8); }
+        }
+      `}</style>
     </div>
   );
 }
