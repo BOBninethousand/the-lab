@@ -1052,30 +1052,161 @@ CLAW3D_URL = os.getenv("CLAW3D_URL", "http://claw3d:3000")
 CLAW3D_WS_URL = os.getenv("CLAW3D_WS_URL", "ws://claw3d:3000")
 _claw3d_client = httpx.AsyncClient(base_url=CLAW3D_URL, timeout=30.0)
 
-@app.websocket("/claw3d/api/gateway/ws")
-async def claw3d_ws_proxy(ws: WebSocket):
-    """WebSocket proxy: browser <-> Claw3D gateway proxy."""
-    await ws.accept()
+# Agent name→id cache for chat bridge
+_agent_name_to_id = {}
+
+async def _ensure_agent_map():
+    """Build agent name→id lookup from The Lab's API."""
+    if _agent_name_to_id:
+        return
     try:
-        async with _ws_lib.connect(f"{CLAW3D_WS_URL}/api/gateway/ws") as upstream:
-            async def browser_to_upstream():
-                try:
-                    while True:
-                        data = await ws.receive_text()
-                        await upstream.send(data)
-                except Exception:
-                    pass
-
-            async def upstream_to_browser():
-                try:
-                    async for msg in upstream:
-                        await ws.send_text(msg)
-                except Exception:
-                    pass
-
-            await asyncio.gather(browser_to_upstream(), upstream_to_browser())
+        resp = await _claw3d_client.request(method="GET", url="/api/agents",
+            headers={"host": "the-lab:8000"})
+        # Actually call our own API directly
     except Exception:
         pass
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient() as c:
+            r = await c.get("http://localhost:8000/api/agents", timeout=5.0)
+            if r.status_code == 200:
+                for a in r.json():
+                    _agent_name_to_id[a["name"]] = a["id"]
+    except Exception:
+        pass
+
+
+def _session_key_to_agent(session_key: str):
+    """Extract agent name from sessionKey like 'Scout:main'."""
+    return session_key.split(":")[0] if ":" in session_key else session_key
+
+
+async def _handle_chat_send(ws: WebSocket, msg: dict):
+    """Intercept chat.send → route to The Lab's /api/chat."""
+    req_id = msg.get("id", "")
+    params = msg.get("params", {})
+    session_key = params.get("sessionKey", "")
+    message = params.get("message", params.get("content", ""))
+    agent_name = _session_key_to_agent(session_key)
+
+    await _ensure_agent_map()
+    agent_id = _agent_name_to_id.get(agent_name)
+
+    if not agent_id:
+        await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": False,
+            "error": {"code": "agent_not_found", "message": f"Agent '{agent_name}' not found"}}))
+        return
+
+    # Acknowledge the request immediately
+    await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": True}))
+
+    # Call The Lab's chat API
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient() as c:
+            r = await c.post("http://localhost:8000/api/chat",
+                json={"agent_id": agent_id, "message": message}, timeout=120.0)
+            if r.status_code == 200:
+                data = r.json()
+                response_text = data.get("response", "")
+            else:
+                response_text = f"Error: HTTP {r.status_code}"
+    except Exception as e:
+        response_text = f"Error: {e}"
+
+    # Send response as OpenClaw runtime-chat event
+    import uuid
+    run_id = str(uuid.uuid4())
+    await ws.send_text(json.dumps({
+        "type": "event",
+        "event": "runtime-chat",
+        "payload": {
+            "runId": run_id,
+            "sessionKey": session_key,
+            "seq": 1,
+            "message": {"role": "assistant", "content": [{"type": "text", "text": response_text}]},
+            "state": "final",
+        }
+    }))
+
+
+async def _handle_chat_history(ws: WebSocket, msg: dict):
+    """Intercept chat.history → route to The Lab's chat history API."""
+    req_id = msg.get("id", "")
+    params = msg.get("params", {})
+    session_key = params.get("sessionKey", "")
+    agent_name = _session_key_to_agent(session_key)
+
+    await _ensure_agent_map()
+    agent_id = _agent_name_to_id.get(agent_name)
+
+    if not agent_id:
+        await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": True, "payload": {"messages": []}}))
+        return
+
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient() as c:
+            r = await c.get(f"http://localhost:8000/api/chat/{agent_id}/history", timeout=10.0)
+            history = r.json() if r.status_code == 200 else []
+    except Exception:
+        history = []
+
+    await ws.send_text(json.dumps({"type": "res", "id": req_id, "ok": True, "payload": {"messages": history}}))
+
+
+@app.websocket("/claw3d/api/gateway/ws")
+async def claw3d_ws_proxy(ws: WebSocket):
+    """WebSocket proxy with chat interception: browser <-> Claw3D/Agent Bus."""
+    await ws.accept()
+    upstream = None
+    try:
+        upstream = await asyncio.wait_for(
+            _ws_lib.connect(f"{CLAW3D_WS_URL}/api/gateway/ws"), timeout=10)
+    except Exception as e:
+        print(f"[claw3d-ws] Failed to connect upstream: {e}")
+        await ws.close(1011)
+        return
+
+    async def browser_to_upstream():
+        try:
+            while True:
+                data = await ws.receive_text()
+                try:
+                    msg = json.loads(data)
+                except (json.JSONDecodeError, TypeError):
+                    await upstream.send(data)
+                    continue
+
+                method = msg.get("method", "") if msg.get("type") == "req" else ""
+
+                if method == "chat.send":
+                    await _handle_chat_send(ws, msg)
+                elif method == "chat.history":
+                    await _handle_chat_history(ws, msg)
+                elif method in ("skills.status",):
+                    # Respond with empty success to suppress errors
+                    await ws.send_text(json.dumps({
+                        "type": "res", "id": msg.get("id", ""), "ok": True, "payload": {}}))
+                else:
+                    await upstream.send(data)
+        except Exception:
+            pass
+
+    async def upstream_to_browser():
+        try:
+            async for msg in upstream:
+                await ws.send_text(msg)
+        except Exception:
+            pass
+
+    try:
+        await asyncio.gather(browser_to_upstream(), upstream_to_browser())
+    except Exception:
+        pass
+    finally:
+        if upstream and not upstream.closed:
+            await upstream.close()
 
 @app.api_route("/claw3d/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def claw3d_proxy(request: Request, path: str):
