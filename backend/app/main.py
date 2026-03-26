@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -326,7 +326,7 @@ async def create_knowledge(data: KnowledgeCreate):
 
 
 @app.post("/api/knowledge/bulk")
-async def bulk_import_knowledge(entries: list):
+async def bulk_import_knowledge(entries: list = Body(...)):
     """Import multiple knowledge base entries at once.
     Accepts JSON array of {title, content, tags (comma-string or list), category}.
     Deduplicates by title match.
@@ -373,7 +373,7 @@ async def bulk_import_knowledge(entries: list):
 
 
 @app.post("/api/knowledge/import-files")
-async def import_knowledge_files(file_entries: list):
+async def import_knowledge_files(file_entries: list = Body(...)):
     """Import .md files from disk as knowledge entries.
     Accepts JSON array of {title, file_path, tags (list), category}.
     Reads file content from the given path.
