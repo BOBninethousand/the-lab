@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 
 const LAB_URL = process.env.LAB_CHAT_URL || "http://the-lab:8000";
 
+// Simple TTL cache for agent list (avoid fetching on every message)
+let cachedAgents: any[] | null = null;
+let cacheTime = 0;
+const CACHE_TTL = 60_000; // 60 seconds
+
+async function getAgents(): Promise<any[]> {
+  if (cachedAgents && Date.now() - cacheTime < CACHE_TTL) return cachedAgents;
+  const resp = await fetch(`${LAB_URL}/api/agents`);
+  const data = await resp.json();
+  cachedAgents = Array.isArray(data) ? data : [];
+  cacheTime = Date.now();
+  return cachedAgents;
+}
+
 // GET /claw3d/api/lab-chat?agentName=Scout — returns agent info for welcome message
 export async function GET(req: NextRequest) {
   const agentName = req.nextUrl.searchParams.get("agentName");
@@ -9,11 +23,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "agentName required" }, { status: 400 });
   }
   try {
-    const resp = await fetch(`${LAB_URL}/api/agents`);
-    const agents = await resp.json();
-    const agent = Array.isArray(agents)
-      ? agents.find((a: any) => a.name === agentName)
-      : null;
+    const agents = await getAgents();
+    const agent = agents.find((a: any) => a.name === agentName);
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
@@ -31,23 +42,26 @@ export async function POST(req: NextRequest) {
   const { agentName, message } = await req.json();
 
   try {
-    // Find agent by name
-    const agentsResp = await fetch(`${LAB_URL}/api/agents`);
-    const agents = await agentsResp.json();
-    const agent = Array.isArray(agents)
-      ? agents.find((a: any) => a.name === agentName)
-      : null;
+    const agents = await getAgents();
+    const agent = agents.find((a: any) => a.name === agentName);
 
     if (!agent) {
       return NextResponse.json({ error: `Agent '${agentName}' not found` }, { status: 404 });
     }
 
-    // Send chat message
     const chatResp = await fetch(`${LAB_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agent_id: agent.id, message }),
     });
+
+    if (!chatResp.ok) {
+      const errData = await chatResp.json().catch(() => ({}));
+      return NextResponse.json(
+        { error: errData.detail || `Chat failed (${chatResp.status})` },
+        { status: chatResp.status }
+      );
+    }
 
     const data = await chatResp.json();
     return NextResponse.json({ response: data.response || "", agentName: agent.name });

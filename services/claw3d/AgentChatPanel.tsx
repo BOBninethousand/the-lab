@@ -90,6 +90,7 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agentName: currentAgent, message: msg }),
+        signal: AbortSignal.timeout(30000),
       });
       const data = await resp.json();
       if (data.response) {

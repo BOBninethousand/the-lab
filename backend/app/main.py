@@ -1062,23 +1062,27 @@ async def claw3d_ws_proxy(ws: WebSocket):
     try:
         async with _ws_lib.connect(f"{CLAW3D_WS_URL}/api/gateway/ws") as upstream:
             async def browser_to_upstream():
-                try:
-                    while True:
-                        data = await ws.receive_text()
-                        await upstream.send(data)
-                except Exception:
-                    pass
+                async for data in ws.iter_text():
+                    await upstream.send(data)
 
             async def upstream_to_browser():
-                try:
-                    async for msg in upstream:
-                        await ws.send_text(msg)
-                except Exception:
-                    pass
+                async for msg in upstream:
+                    await ws.send_text(msg)
 
-            await asyncio.gather(browser_to_upstream(), upstream_to_browser())
+            tasks = [
+                asyncio.create_task(browser_to_upstream()),
+                asyncio.create_task(upstream_to_browser()),
+            ]
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
     except Exception as e:
-        print(f"[claw3d-ws] Error: {e}")
+        print(f"[claw3d-ws] relay closed: {e}")
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 @app.api_route("/claw3d/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def claw3d_proxy(request: Request, path: str):

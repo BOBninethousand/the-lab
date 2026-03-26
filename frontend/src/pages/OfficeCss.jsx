@@ -67,18 +67,18 @@ export function OfficeCss() {
   useEffect(() => {
     if (events.length > 0) {
       const lastEvent = events[0]
-      if (lastEvent.agent_id) {
+      if (lastEvent.type === 'agent_status' && lastEvent.data?.id) {
+        const { id, status, current_task } = lastEvent.data
         setAgents(prev =>
           prev.map(a =>
-            a.id === lastEvent.agent_id
-              ? { ...a, status: lastEvent.status || a.status, current_task: lastEvent.current_task ?? a.current_task }
+            a.id === id
+              ? { ...a, status: status || a.status, current_task: current_task ?? a.current_task }
               : a
           )
         )
-        // Update selected agent if it's the one that changed
         setSelectedAgent(prev =>
-          prev?.id === lastEvent.agent_id
-            ? { ...prev, status: lastEvent.status || prev.status, current_task: lastEvent.current_task ?? prev.current_task }
+          prev?.id === id
+            ? { ...prev, status: status || prev.status, current_task: current_task ?? prev.current_task }
             : prev
         )
       }
