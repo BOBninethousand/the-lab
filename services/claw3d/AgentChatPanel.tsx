@@ -55,6 +55,23 @@ function AgentChatPanelInner(props: AgentChatPanelProps) {
     }));
   }, []);
 
+  // Auto-greeting: fetch agent role/goal and show welcome message on first open
+  useEffect(() => {
+    if (messagesByAgent[agent.name]) return; // Already has messages
+    let cancelled = false;
+    fetch(`/claw3d/api/lab-chat?agentName=${encodeURIComponent(agent.name)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || messagesByAgent[agent.name]) return;
+        const greeting = data.role
+          ? `Hi, I'm ${data.name} — ${data.role}.${data.goal ? `\n\n${data.goal}` : ""}\n\nHow can I help?`
+          : `Hi, I'm ${data.name}. How can I help?`;
+        addMessage(agent.name, { role: "assistant" as const, content: greeting, ts: Date.now() });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [agent.name]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
