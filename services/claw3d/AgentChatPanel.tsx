@@ -11,8 +11,33 @@ import { AgentAvatar } from "./AgentAvatar";
 
 type ChatMessage = { role: "user" | "assistant"; content: string; ts: number };
 
-// Accept all original props (most are ignored — we only use agent + onDraftChange)
-function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSend, ...rest }: any) {
+// Props interface matching the original AgentChatPanel so the parent's type inference works
+type AgentChatPanelProps = {
+  agent: AgentRecord;
+  isSelected?: boolean;
+  canSend?: boolean;
+  models?: any[];
+  stopBusy?: boolean;
+  stopDisabledReason?: string | null;
+  onLoadMoreHistory?: () => void;
+  onOpenSettings?: () => void;
+  onRename?: (name: string) => Promise<boolean>;
+  onNewSession?: () => Promise<void> | void;
+  onModelChange?: (value: string | null) => void;
+  onThinkingChange?: (value: string | null) => void;
+  onToolCallingToggle?: (enabled: boolean) => void;
+  onThinkingTracesToggle?: (enabled: boolean) => void;
+  onDraftChange?: (value: string) => void;
+  onSend?: (message: string) => void;
+  onRemoveQueuedMessage?: (index: number) => void;
+  onStopRun?: () => void;
+  onAvatarShuffle?: () => void;
+  pendingExecApprovals?: any[];
+  onResolveExecApproval?: (id: string, decision: any) => void;
+  onVoiceSend?: (payload: any) => Promise<void>;
+};
+
+function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSend, ...rest }: AgentChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
