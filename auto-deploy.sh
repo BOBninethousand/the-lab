@@ -162,10 +162,10 @@ deploy() {
 
   # Build (scenario 6, 7 — Dockerfile and dependency changes handled by Docker layer cache)
   log "Building..."
-  if ! docker compose build --no-cache >> "$LOG_FILE" 2>&1; then
+  if ! docker compose build >> "$LOG_FILE" 2>&1; then
     # Scenario 15 — build failed, log output
     log "ERROR: Build failed. Last 50 lines of build output:"
-    docker compose build --no-cache 2>&1 | tail -50 >> "$LOG_FILE"
+    docker compose build 2>&1 | tail -50 >> "$LOG_FILE"
     return 1
   fi
 
@@ -305,7 +305,7 @@ rollback() {
 
   log "Rolled back from $current_commit to $(git rev-parse HEAD)"
   docker compose down --remove-orphans >> "$LOG_FILE" 2>&1
-  docker compose build --no-cache >> "$LOG_FILE" 2>&1
+  docker compose build >> "$LOG_FILE" 2>&1
   docker compose up -d --build --remove-orphans >> "$LOG_FILE" 2>&1
 
   log "Rollback deploy complete. Container status:"
