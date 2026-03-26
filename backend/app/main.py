@@ -1127,23 +1127,36 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
 
     print(f"[chat-bridge] response for {agent_name}: {response_text[:100]}")
 
-    # Send response as runtime-chat event with frame-level seq + stateVersion
-    # (GatewayClient uses these for message ordering and gap detection)
+    # Send user message echo (so Claw3D shows it in transcript)
     await ws.send_text(json.dumps({
-        "type": "event",
-        "event": "runtime-chat",
-        "seq": 1,
-        "stateVersion": {"presence": 1, "health": 0},
+        "type": "event", "event": "runtime-chat",
+        "seq": 1, "stateVersion": {"presence": 1, "health": 0},
         "payload": {
-            "runId": run_id,
-            "sessionKey": session_key,
-            "seq": 1,
-            "stopReason": "end_turn",
-            "state": "final",
-            "message": {
-                "role": "assistant",
-                "content": [{"type": "text", "text": response_text}]
-            }
+            "runId": run_id, "sessionKey": session_key, "seq": 1,
+            "state": "delta",
+            "message": {"role": "user", "content": [{"type": "text", "text": message}]}
+        }
+    }))
+
+    # Send assistant response as delta first (Claw3D needs delta before final)
+    await ws.send_text(json.dumps({
+        "type": "event", "event": "runtime-chat",
+        "seq": 2, "stateVersion": {"presence": 1, "health": 0},
+        "payload": {
+            "runId": run_id, "sessionKey": session_key, "seq": 2,
+            "state": "delta",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": response_text}]}
+        }
+    }))
+
+    # Send final to mark completion (stops thinking indicator)
+    await ws.send_text(json.dumps({
+        "type": "event", "event": "runtime-chat",
+        "seq": 3, "stateVersion": {"presence": 1, "health": 0},
+        "payload": {
+            "runId": run_id, "sessionKey": session_key, "seq": 3,
+            "stopReason": "end_turn", "state": "final",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": response_text}]}
         }
     }))
 
