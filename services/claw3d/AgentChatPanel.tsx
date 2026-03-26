@@ -6,6 +6,9 @@
  */
 import React, { memo, useCallback, useRef, useState, useEffect } from "react";
 import type { AgentState as AgentRecord } from "@/features/agents/state/store";
+import type { ExecApprovalDecision, PendingExecApproval } from "@/features/agents/approvals/types";
+import type { GatewayModelChoice } from "@/lib/gateway/models";
+import type { VoiceSendPayload } from "@/hooks/useVoiceRecorder";
 import { AgentAvatar } from "./AgentAvatar";
 
 type ChatMessage = { role: "user" | "assistant"; content: string; ts: number };
@@ -14,7 +17,7 @@ type AgentChatPanelProps = {
   agent: AgentRecord;
   isSelected?: boolean;
   canSend?: boolean;
-  models?: unknown[];
+  models?: GatewayModelChoice[];
   stopBusy?: boolean;
   stopDisabledReason?: string | null;
   onLoadMoreHistory?: () => void;
@@ -30,9 +33,9 @@ type AgentChatPanelProps = {
   onRemoveQueuedMessage?: (index: number) => void;
   onStopRun?: () => void;
   onAvatarShuffle?: () => void;
-  pendingExecApprovals?: unknown[];
-  onResolveExecApproval?: (id: string, decision: unknown) => void;
-  onVoiceSend?: (payload: unknown) => Promise<void>;
+  pendingExecApprovals?: PendingExecApproval[];
+  onResolveExecApproval?: (id: string, decision: ExecApprovalDecision) => void;
+  onVoiceSend?: (payload: VoiceSendPayload) => Promise<void>;
 };
 
 function AgentChatPanelInner(props: AgentChatPanelProps) {
