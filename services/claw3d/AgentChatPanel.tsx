@@ -60,7 +60,7 @@ function AgentChatPanelInner({ agent, onDraftChange, onNewSession, onSend: _onSe
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0c0c14" }}>
       {/* Header */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", gap: 12 }}>
-        <AgentAvatar agent={agent} size={36} />
+        <AgentAvatar seed={agent.agentId || agent.name} name={agent.name} size={36} />
         <div>
           <div style={{ fontWeight: 600, fontSize: 14, color: "#fff" }}>{agent.name}</div>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
