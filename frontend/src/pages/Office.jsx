@@ -29,7 +29,7 @@ export function Office() {
       <iframe
         src="/claw3d/office"
         className="relative z-10 w-full h-full border-0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; webgl"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
         onError={handleIframeError}
         title="3D Office"
       />
