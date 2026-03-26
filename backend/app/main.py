@@ -1127,38 +1127,28 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
 
     print(f"[chat-bridge] response for {agent_name}: {response_text[:100]}")
 
-    # Send user message echo (so Claw3D shows it in transcript)
-    await ws.send_text(json.dumps({
-        "type": "event", "event": "runtime-chat",
-        "seq": 1, "stateVersion": {"presence": 1, "health": 0},
-        "payload": {
-            "runId": run_id, "sessionKey": session_key, "seq": 1,
-            "state": "delta",
-            "message": {"role": "user", "content": [{"type": "text", "text": message}]}
-        }
-    }))
-
-    # Send assistant response as delta first (Claw3D needs delta before final)
-    await ws.send_text(json.dumps({
-        "type": "event", "event": "runtime-chat",
-        "seq": 2, "stateVersion": {"presence": 1, "health": 0},
-        "payload": {
-            "runId": run_id, "sessionKey": session_key, "seq": 2,
-            "state": "delta",
-            "message": {"role": "assistant", "content": [{"type": "text", "text": response_text}]}
-        }
-    }))
-
-    # Send final to mark completion (stops thinking indicator)
-    await ws.send_text(json.dumps({
-        "type": "event", "event": "runtime-chat",
-        "seq": 3, "stateVersion": {"presence": 1, "health": 0},
-        "payload": {
-            "runId": run_id, "sessionKey": session_key, "seq": 3,
-            "stopReason": "end_turn", "state": "final",
-            "message": {"role": "assistant", "content": [{"type": "text", "text": response_text}]}
-        }
-    }))
+    # Send response THROUGH Agent Bus pipeline (not directly to browser WS).
+    # Claw3D's chat panel reads from agent.outputLines which is only populated
+    # by events that come through the gateway's event processing pipeline.
+    # Direct ws.send_text() events bypass this pipeline and never reach outputLines.
+    AGENT_BUS_URL = os.getenv("AGENT_BUS_URL", "http://agent-bus:4000/events")
+    try:
+        async with httpx.AsyncClient() as c:
+            # Send as tool_use so it appears in the agent's activity stream
+            await c.post(AGENT_BUS_URL, json={
+                "agent": agent_name, "project": "the-lab",
+                "event": "tool_use", "tool": "chat",
+                "message": response_text
+            }, timeout=5.0)
+            # Send task_complete to finalize
+            await c.post(AGENT_BUS_URL, json={
+                "agent": agent_name, "project": "the-lab",
+                "event": "task_complete",
+                "message": response_text[:200]
+            }, timeout=5.0)
+        print(f"[chat-bridge] sent response via Agent Bus for {agent_name}")
+    except Exception as e:
+        print(f"[chat-bridge] failed to send via Agent Bus: {e}")
 
 
 async def _handle_chat_history(ws: WebSocket, msg: dict):
