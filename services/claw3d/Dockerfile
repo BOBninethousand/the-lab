@@ -36,6 +36,11 @@ RUN npm run build
 ENV HOST=0.0.0.0
 ENV PORT=3000
 
+# Pre-configure gateway connection so Claw3D auto-connects (skips onboarding screen)
+# Claw3D reads from ~/.openclaw/claw3d/settings.json at startup
+RUN mkdir -p /root/.openclaw/claw3d && \
+    printf '{"gateway":{"url":"ws://agent-bus:18789","token":"agent-bus"}}\n' > /root/.openclaw/claw3d/settings.json
+
 EXPOSE 3000
 
 CMD ["npm", "start"]
