@@ -1122,6 +1122,49 @@ async def claw3d_assets_proxy(request: Request, path: str):
         raise HTTPException(status_code=502, detail="Claw3D service unavailable")
 
 
+# --- CLAW3D API PROXY ---
+# Claw3D's custom server handles /api/studio and /api/office/* outside Next.js basePath.
+# Without these routes, requests hit the SPA catch-all and return HTML instead of JSON,
+# causing "Cannot read properties of null (reading 'settings')" and locked interactions.
+
+@app.api_route("/api/studio", methods=["GET", "POST", "PUT"])
+async def claw3d_studio_proxy(request: Request):
+    """Proxy Claw3D studio settings API."""
+    url = "/api/studio"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+    try:
+        resp = await _claw3d_client.request(
+            method=request.method, url=url,
+            headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "connection")},
+            content=await request.body() if request.method in ("POST", "PUT") else None,
+        )
+        excluded = {"transfer-encoding", "connection", "content-encoding"}
+        headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+        return StreamingResponse(content=iter([resp.content]), status_code=resp.status_code, headers=headers)
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Claw3D service unavailable")
+
+
+@app.api_route("/api/office/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def claw3d_office_api_proxy(request: Request, path: str):
+    """Proxy Claw3D office API (layout, preferences, standup)."""
+    url = f"/api/office/{path}"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+    try:
+        resp = await _claw3d_client.request(
+            method=request.method, url=url,
+            headers={k: v for k, v in request.headers.items() if k.lower() not in ("host", "connection")},
+            content=await request.body() if request.method in ("POST", "PUT", "PATCH") else None,
+        )
+        excluded = {"transfer-encoding", "connection", "content-encoding"}
+        headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+        return StreamingResponse(content=iter([resp.content]), status_code=resp.status_code, headers=headers)
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Claw3D service unavailable")
+
+
 # --- STATIC FILES (serve frontend) ---
 # Navigate from backend/app/ → backend/ → project root → frontend/dist
 _app_dir = os.path.dirname(os.path.abspath(__file__))          # backend/app/
