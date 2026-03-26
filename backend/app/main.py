@@ -1127,10 +1127,13 @@ async def _handle_chat_send(ws: WebSocket, msg: dict):
 
     print(f"[chat-bridge] response for {agent_name}: {response_text[:100]}")
 
-    # Send response with stopReason for terminal state recognition
+    # Send response as runtime-chat event with frame-level seq + stateVersion
+    # (GatewayClient uses these for message ordering and gap detection)
     await ws.send_text(json.dumps({
         "type": "event",
         "event": "runtime-chat",
+        "seq": 1,
+        "stateVersion": {"presence": 1, "health": 0},
         "payload": {
             "runId": run_id,
             "sessionKey": session_key,
