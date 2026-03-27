@@ -11,6 +11,7 @@ import { Costs } from './pages/Costs'
 import { OpenClaw } from './pages/OpenClaw'
 import { Settings } from './pages/Settings'
 import { Strategy } from './pages/Strategy'
+import { MasterChatPage } from './pages/MasterChatPage'
 import { MasterChat } from './components/MasterChat'
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/master-chat" element={<MasterChatPage />} />
           <Route path="/strategy" element={<Strategy />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/office" element={<Office />} />

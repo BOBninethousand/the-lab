@@ -19,6 +19,7 @@ import { useWebSocket } from '../hooks/useWebSocket'
 
 const navItems = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { label: 'Master Chat', icon: FlaskConical, path: '/master-chat' },
   { label: 'Strategy', icon: Target, path: '/strategy' },
   { label: 'Agents', icon: Users, path: '/agents' },
   { label: 'Office', icon: Building2, path: '/office' },
@@ -36,6 +37,7 @@ const bottomNavItems = [
 
 const pageNames = {
   '/': 'Dashboard',
+  '/master-chat': 'Master Chat',
   '/strategy': 'Strategy',
   '/agents': 'Agents',
   '/office': 'Office',

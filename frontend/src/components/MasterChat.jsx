@@ -24,8 +24,8 @@ export function MasterChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Hide on Office page — Claw3D has its own chat (must be after all hooks)
-  if (location.pathname === '/office') return null
+  // Hide on Office page (Claw3D has own chat) and Master Chat page (already full-screen)
+  if (location.pathname === '/office' || location.pathname === '/master-chat') return null
 
   const loadHistory = async () => {
     try {

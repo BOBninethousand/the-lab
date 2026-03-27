@@ -387,3 +387,7 @@ export async function getMasterChatConfig() {
 export async function updateMasterChatConfig(data) {
   return api('/api/master-chat/config', { method: 'PATCH', body: JSON.stringify(data) })
 }
+
+export async function getSkills() {
+  return api('/api/skills')
+}
