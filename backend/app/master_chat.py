@@ -230,7 +230,7 @@ class MasterChat:
 
     def __init__(self, agent_manager, scheduler_manager, strategy_manager,
                  report_manager, knowledge_manager, agent_memory_manager,
-                 correction_manager, cost_tracker, notion_bridge=None):
+                 correction_manager, cost_tracker, notion_bridge=None, ws_manager=None):
         self.agent_manager = agent_manager
         self.scheduler_manager = scheduler_manager
         self.strategy_manager = strategy_manager
@@ -240,6 +240,7 @@ class MasterChat:
         self.correction_manager = correction_manager
         self.cost_tracker = cost_tracker
         self.notion_bridge = notion_bridge
+        self.ws_manager = ws_manager
 
     # --- Config ---
 
@@ -318,7 +319,34 @@ class MasterChat:
                 agent = self._resolve_agent(args["agent_name"])
                 if not agent:
                     return f"Agent '{args['agent_name']}' not found. Available: Scout, Quill, Forge, Radar."
+
+                # Broadcast working status → triggers Office agents + Bridge + UI
+                task_preview = args["message"][:50]
+                self.agent_manager.update_status(agent.id, "working", f"Master Chat: {task_preview}")
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("agent_status", {
+                        **agent.model_dump(mode="json"),
+                        "status": "working",
+                        "current_task": f"Master Chat: {task_preview}",
+                    })
+
                 response = await self.agent_manager.chat_async(agent.id, args["message"])
+
+                # Broadcast idle status
+                self.agent_manager.update_status(agent.id, "idle", None)
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("agent_status", {
+                        **agent.model_dump(mode="json"),
+                        "status": "idle",
+                        "current_task": None,
+                    })
+                    await self.ws_manager.broadcast("task_completed", {
+                        "agent_id": agent.id,
+                        "agent_name": agent.name,
+                        "task": "Master Chat task",
+                        "result": response[:100],
+                    })
+
                 return response
 
             elif tool_name == "create_strategy":
