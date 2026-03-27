@@ -132,11 +132,16 @@ export function Documents() {
   }
 
   // Open report from URL param (e.g. navigated from Dashboard)
+  // Also support ?agent=Scout to pre-filter by agent (e.g. from Strategy page)
   useEffect(() => {
     const reportId = searchParams.get('report')
     if (reportId && reports.length > 0) {
       const found = reports.find(r => r.id === reportId)
       if (found) handleSelectReport(found)
+    }
+    const agentParam = searchParams.get('agent')
+    if (agentParam && !agentFilter) {
+      setAgentFilter(agentParam)
     }
   }, [searchParams, reports])
 

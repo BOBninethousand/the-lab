@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { StatCard } from '../components/StatCard'
 import {
@@ -59,6 +60,8 @@ export function Strategy() {
     schedule_ids: [],
     tags: [],
   })
+
+  const navigate = useNavigate()
 
   const loadData = async () => {
     setIsLoading(true)
@@ -433,6 +436,28 @@ export function Strategy() {
                         </div>
                       </div>
                     )}
+
+                    {/* Quick links to results */}
+                    <div className="flex flex-wrap gap-2">
+                      {agentNames.length > 0 && (
+                        <button
+                          onClick={() => navigate(`/documents?agent=${agentNames[0]}`)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-lab-accent/10 text-lab-accent hover:bg-lab-accent/20 transition-subtle"
+                        >
+                          <FileText size={12} />
+                          View Reports {prog ? `(${prog.reports_count})` : ''}
+                        </button>
+                      )}
+                      {schedNames.length > 0 && (
+                        <button
+                          onClick={() => navigate('/calendar')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-white/[0.04] text-lab-text-secondary hover:bg-white/[0.06] transition-subtle"
+                        >
+                          <Calendar size={12} />
+                          View Schedules
+                        </button>
+                      )}
+                    </div>
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 pt-2 border-t border-lab-border">
