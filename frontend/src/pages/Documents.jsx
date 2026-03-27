@@ -141,7 +141,9 @@ export function Documents() {
     }
     const agentParam = searchParams.get('agent')
     if (agentParam && !agentFilter) {
-      setAgentFilter(agentParam)
+      // Support comma-separated agent names from Strategy page — use first one
+      const firstAgent = agentParam.split(',')[0]
+      setAgentFilter(firstAgent)
     }
   }, [searchParams, reports])
 

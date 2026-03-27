@@ -50,6 +50,8 @@ export function Strategy() {
   const [expandedId, setExpandedId] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [statusFilter, setStatusFilter] = useState(null) // null = all
+  const [error, setError] = useState(null)
 
   // Create form state
   const [form, setForm] = useState({
@@ -92,34 +94,46 @@ export function Strategy() {
     }
   }, [expandedId])
 
+  const showError = (msg) => {
+    setError(msg)
+    setTimeout(() => setError(null), 4000)
+  }
+
   const handleCreate = async () => {
     if (!form.title.trim()) return
-    await createStrategy(form)
-    setForm({ title: '', problem: '', approach: '', agent_ids: [], schedule_ids: [], tags: [] })
-    setShowCreate(false)
-    loadData()
+    try {
+      await createStrategy(form)
+      setForm({ title: '', problem: '', approach: '', agent_ids: [], schedule_ids: [], tags: [] })
+      setShowCreate(false)
+      loadData()
+    } catch { showError('Failed to create strategy') }
   }
 
   const handleUpdate = async (id) => {
-    await updateStrategy(id, form)
-    setEditingId(null)
-    setForm({ title: '', problem: '', approach: '', agent_ids: [], schedule_ids: [], tags: [] })
-    loadData()
+    try {
+      await updateStrategy(id, form)
+      setEditingId(null)
+      setForm({ title: '', problem: '', approach: '', agent_ids: [], schedule_ids: [], tags: [] })
+      loadData()
+    } catch { showError('Failed to update strategy') }
   }
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this strategy? This cannot be undone.')) return
-    await deleteStrategy(id)
-    if (expandedId === id) setExpandedId(null)
-    loadData()
+    try {
+      await deleteStrategy(id)
+      if (expandedId === id) setExpandedId(null)
+      loadData()
+    } catch { showError('Failed to delete strategy') }
   }
 
   const handleStatusToggle = async (strategy) => {
-    const nextStatus = strategy.status === 'active' ? 'paused'
-      : strategy.status === 'paused' ? 'active'
-      : 'active'
-    await updateStrategy(strategy.id, { status: nextStatus })
-    loadData()
+    const cycle = { active: 'paused', paused: 'completed', completed: 'active' }
+    const nextStatus = cycle[strategy.status] || 'active'
+    try {
+      await updateStrategy(strategy.id, { status: nextStatus })
+      loadData()
+    } catch { showError('Failed to update status') }
   }
 
   const startEdit = (strategy) => {
@@ -175,6 +189,13 @@ export function Strategy() {
         <StatCard label="Agents Linked" value={totalAgentsLinked} isLoading={isLoading} />
         <StatCard label="Schedules Linked" value={totalSchedulesLinked} isLoading={isLoading} />
       </div>
+
+      {/* Error toast */}
+      {error && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-2.5 bg-red-500/90 text-white text-xs font-medium rounded-lg shadow-lg">
+          {error}
+        </div>
+      )}
 
       {/* Header + Add button */}
       <div className="flex items-center justify-between">
@@ -292,6 +313,30 @@ export function Strategy() {
         </div>
       )}
 
+      {/* Status filter */}
+      {strategies.length > 0 && (
+        <div className="flex items-center gap-1.5">
+          {[
+            { value: null, label: 'All' },
+            { value: 'active', label: 'Active' },
+            { value: 'paused', label: 'Paused' },
+            { value: 'completed', label: 'Done' },
+          ].map(opt => (
+            <button
+              key={opt.label}
+              onClick={() => setStatusFilter(opt.value)}
+              className={`px-2.5 py-1 rounded-md text-xs transition-subtle ${
+                statusFilter === opt.value
+                  ? 'bg-lab-accent/15 text-lab-accent font-medium'
+                  : 'text-lab-text-muted hover:bg-white/[0.03]'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Strategy list */}
       {isLoading ? (
         <div className="space-y-3">
@@ -309,7 +354,7 @@ export function Strategy() {
         </div>
       ) : (
         <div className="space-y-3">
-          {strategies.map(strategy => {
+          {strategies.filter(s => !statusFilter || s.status === statusFilter).map(strategy => {
             const isExpanded = expandedId === strategy.id
             const prog = progress[strategy.id]
             const agentNames = (strategy.agent_ids || []).map(getAgentName)
@@ -441,7 +486,7 @@ export function Strategy() {
                     <div className="flex flex-wrap gap-2">
                       {agentNames.length > 0 && (
                         <button
-                          onClick={() => navigate(`/documents?agent=${agentNames[0]}`)}
+                          onClick={() => navigate(`/documents?agent=${agentNames.join(',')}`)}
                           className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-lab-accent/10 text-lab-accent hover:bg-lab-accent/20 transition-subtle"
                         >
                           <FileText size={12} />
@@ -467,7 +512,9 @@ export function Strategy() {
                       >
                         {strategy.status === 'active'
                           ? <><Pause size={12} /> Pause</>
-                          : <><Play size={12} /> Activate</>
+                          : strategy.status === 'paused'
+                          ? <><Check size={12} /> Complete</>
+                          : <><Play size={12} /> Reactivate</>
                         }
                       </button>
                       <button
