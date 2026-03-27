@@ -27,7 +27,9 @@ You help the user manage their AI agent operations hub. You can create strategie
 
 ## How to Work
 - When the user asks to do something, use the available tools to execute it.
-- Chain multiple tools when needed (e.g., create strategy → assign agent → create schedule).
+- If the user doesn't specify an agent, choose the best one: Scout for research/leads, Quill for content/writing, Forge for tech, Radar for outreach/sales.
+- Chain multiple tools when needed (e.g., create strategy → create schedule → run job).
+- You can call multiple tools in one turn to handle complex requests.
 - Always explain what you did and what happened.
 - Use British English. Be direct, no fluff.
 - Apply Hormozi's priority framework: (1) Revenue (2) Credibility/proof (3) Distribution (4) Product strength.
@@ -159,6 +161,67 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "publish_to_notion",
+            "description": "Publish a report to Notion. Use after an agent produces a report that should be shared or reviewed in Notion.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Report title"},
+                    "content": {"type": "string", "description": "Report content (markdown)"},
+                    "agent_name": {"type": "string", "description": "Which agent produced this"},
+                    "report_type": {"type": "string", "enum": ["briefing", "content", "tech_report", "outreach", "weekly_review"], "description": "Type of report"},
+                },
+                "required": ["title", "content", "agent_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_schedules",
+            "description": "List all scheduled jobs (cron jobs). Shows what's running, when, and for which agent.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_strategies",
+            "description": "List all business strategies with their status, assigned agents, and linked schedules.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_report",
+            "description": "Read the full content of a specific report. Use when the user wants to see what an agent produced.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent_name": {"type": "string", "description": "Agent name to get latest report from"},
+                },
+                "required": ["agent_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "toggle_schedule",
+            "description": "Pause or resume a scheduled job. Use when the user wants to stop or restart a recurring job.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "job_name": {"type": "string", "description": "Name of the job to pause/resume"},
+                },
+                "required": ["job_name"],
+            },
+        },
+    },
 ]
 
 
@@ -167,7 +230,7 @@ class MasterChat:
 
     def __init__(self, agent_manager, scheduler_manager, strategy_manager,
                  report_manager, knowledge_manager, agent_memory_manager,
-                 correction_manager, cost_tracker):
+                 correction_manager, cost_tracker, notion_bridge=None):
         self.agent_manager = agent_manager
         self.scheduler_manager = scheduler_manager
         self.strategy_manager = strategy_manager
@@ -176,6 +239,7 @@ class MasterChat:
         self.agent_memory_manager = agent_memory_manager
         self.correction_manager = correction_manager
         self.cost_tracker = cost_tracker
+        self.notion_bridge = notion_bridge
 
     # --- Config ---
 
@@ -226,6 +290,10 @@ class MasterChat:
             if agent.name.lower() == name.lower():
                 return agent
         return None
+
+    def _resolve_agent_by_id(self, agent_id: str):
+        """Find agent by ID."""
+        return self.agent_manager.get_agent(agent_id)
 
     def _resolve_job(self, name: str):
         """Find scheduled job by name (case-insensitive, partial match)."""
@@ -323,6 +391,66 @@ class MasterChat:
                     f"**Strategies:** {len(strategies)} ({len(active_strats)} active)",
                 ]
                 return "\n".join(status_lines)
+
+            elif tool_name == "publish_to_notion":
+                if not self.notion_bridge:
+                    return "Notion is not configured. Set NOTION_API_KEY and NOTION_DATABASE_ID in .env."
+                url = await self.notion_bridge.publish_report(
+                    title=args["title"],
+                    content=args["content"],
+                    agent_name=args.get("agent_name", "Master Chat"),
+                    report_type=args.get("report_type", "briefing"),
+                    source="master_chat",
+                )
+                if url:
+                    return f"Published to Notion: {url}"
+                return "Failed to publish to Notion. Check API key configuration."
+
+            elif tool_name == "list_schedules":
+                jobs = self.scheduler_manager.list_jobs()
+                if not jobs:
+                    return "No scheduled jobs found."
+                lines = []
+                for j in jobs:
+                    agent = self._resolve_agent_by_id(j.get("agent_id", ""))
+                    agent_name = agent.name if agent else "Unknown"
+                    status = "enabled" if j.get("enabled") else "paused"
+                    lines.append(f"- **{j['name']}** — {agent_name}, {j.get('human_schedule', j.get('cron_expression', ''))}, {status}")
+                return "\n".join(lines)
+
+            elif tool_name == "list_strategies":
+                strategies = self.strategy_manager.list_all()
+                if not strategies:
+                    return "No strategies found."
+                lines = []
+                for s in strategies:
+                    agent_names = []
+                    for aid in s.get("agent_ids", []):
+                        a = self._resolve_agent_by_id(aid)
+                        if a:
+                            agent_names.append(a.name)
+                    status = s.get("status", "active").capitalize()
+                    lines.append(f"- **{s['title']}** [{status}] — {', '.join(agent_names) or 'No agents'}")
+                    if s.get("problem"):
+                        lines.append(f"  Problem: {s['problem'][:100]}")
+                return "\n".join(lines)
+
+            elif tool_name == "read_report":
+                agent_name = args.get("agent_name")
+                reports = self.report_manager.list_reports(agent_name=agent_name, limit=1)
+                if not reports:
+                    return f"No reports found for {agent_name}."
+                r = reports[0]
+                content = r.content[:2000] if len(r.content) > 2000 else r.content
+                return f"**{r.title}** ({r.agent_name}, {r.report_type})\n{str(r.created_at)[:10]}\n\n{content}"
+
+            elif tool_name == "toggle_schedule":
+                job = self._resolve_job(args["job_name"])
+                if not job:
+                    return f"Job '{args['job_name']}' not found."
+                self.scheduler_manager.toggle_job(job["id"])
+                new_state = "paused" if job.get("enabled") else "resumed"
+                return f"Job '{job['name']}' {new_state}."
 
             else:
                 return f"Unknown tool: {tool_name}"

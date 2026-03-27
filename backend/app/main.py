@@ -94,6 +94,7 @@ master_chat = MasterChat(
     agent_memory_manager=agent_memory_manager,
     correction_manager=correction_manager,
     cost_tracker=cost_tracker,
+    notion_bridge=notion_bridge,
 )
 
 
