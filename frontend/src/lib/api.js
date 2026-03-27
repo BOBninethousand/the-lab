@@ -350,3 +350,24 @@ export async function importKnowledgeFiles(entries) {
     method: 'POST', body: JSON.stringify(entries)
   })
 }
+
+// Master Chat
+export async function sendMasterChat(message) {
+  return api('/api/master-chat', { method: 'POST', body: JSON.stringify({ message }) })
+}
+
+export async function getMasterChatHistory() {
+  return api('/api/master-chat/history')
+}
+
+export async function clearMasterChatHistory() {
+  return api('/api/master-chat/history', { method: 'DELETE' })
+}
+
+export async function getMasterChatConfig() {
+  return api('/api/master-chat/config')
+}
+
+export async function updateMasterChatConfig(data) {
+  return api('/api/master-chat/config', { method: 'PATCH', body: JSON.stringify(data) })
+}

@@ -265,6 +265,15 @@ class Report(BaseModel):
 
 # --- Strategy Models ---
 
+class MasterChatRequest(BaseModel):
+    message: str
+
+
+class MasterChatConfig(BaseModel):
+    provider: str = "openai"  # openai, anthropic, ollama
+    model_name: str = "gpt-4o"
+
+
 class StrategyCreate(BaseModel):
     title: str
     problem: str = ""

@@ -25,6 +25,8 @@ from app.models import (
     CorrectionCreate,
     StrategyCreate,
     StrategyUpdate,
+    MasterChatRequest,
+    MasterChatConfig,
 )
 from app.websocket_manager import ws_manager
 from app.agents import AgentManager
@@ -44,6 +46,7 @@ from app.memory_engine import (
 )
 from app.notion_bridge import NotionBridge
 from app.strategy_manager import StrategyManager
+from app.master_chat import MasterChat
 
 # Initialize managers
 agent_manager = AgentManager()
@@ -80,6 +83,18 @@ scheduler_manager.notion_bridge = notion_bridge
 
 # Strategy manager
 strategy_manager = StrategyManager()
+
+# Master Chat
+master_chat = MasterChat(
+    agent_manager=agent_manager,
+    scheduler_manager=scheduler_manager,
+    strategy_manager=strategy_manager,
+    report_manager=report_manager,
+    knowledge_manager=knowledge_manager,
+    agent_memory_manager=agent_memory_manager,
+    correction_manager=correction_manager,
+    cost_tracker=cost_tracker,
+)
 
 
 @asynccontextmanager
@@ -1297,6 +1312,36 @@ async def claw3d_office_api_proxy(request: Request, path: str):
         return StreamingResponse(content=iter([resp.content]), status_code=resp.status_code, headers=headers)
     except httpx.ConnectError:
         raise HTTPException(status_code=502, detail="Claw3D service unavailable")
+
+
+# --- MASTER CHAT ENDPOINTS ---
+
+@app.post("/api/master-chat")
+async def master_chat_endpoint(data: MasterChatRequest):
+    response = await master_chat.chat(data.message)
+    return {"response": response}
+
+
+@app.get("/api/master-chat/history")
+async def master_chat_history():
+    return master_chat.get_history()
+
+
+@app.delete("/api/master-chat/history")
+async def clear_master_chat_history():
+    master_chat.clear_history()
+    return {"status": "cleared"}
+
+
+@app.get("/api/master-chat/config")
+async def get_master_chat_config():
+    return master_chat.get_config()
+
+
+@app.patch("/api/master-chat/config")
+async def update_master_chat_config(data: MasterChatConfig):
+    config = master_chat.update_config(data.model_dump())
+    return config
 
 
 # --- STRATEGY ENDPOINTS ---
