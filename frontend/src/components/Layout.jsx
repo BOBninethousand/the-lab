@@ -106,7 +106,7 @@ export function Layout({ children }) {
                   to={item.path}
                   className={`flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle ${
                     isActive
-                      ? 'text-lab-text-primary border-l-2 border-lab-accent'
+                      ? 'text-lab-text-primary bg-white/[0.05]'
                       : 'text-lab-text-secondary hover:bg-white/[0.03]'
                   }`}
                 >
@@ -132,7 +132,7 @@ export function Layout({ children }) {
                 to={item.path}
                 className={`flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle ${
                   isActive
-                    ? 'text-lab-text-primary border-l-2 border-lab-accent'
+                    ? 'text-lab-text-primary bg-white/[0.05]'
                     : 'text-lab-text-secondary hover:bg-white/[0.03]'
                 }`}
               >
