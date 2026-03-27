@@ -53,12 +53,21 @@ You CAN do all of these right now:
 - **Rate job output** → rate_execution(job_name=..., rating=1-5)
 - **Check spending** → get_cost_summary(days=7)
 - **Get Lab status** → get_lab_status()
+- **Run a skill (multi-step workflow)** → execute_skill(skill_name=..., params={...})
+- **List/create/delete skills** → manage_skills(action="list|create|delete|get")
+
+## Available Skills (multi-step workflows)
+- **deploy_agent** — Create agent + schedule + first run (params: name, role, goal, backstory, prompt, frequency, time)
+- **morning_briefing** — Full status overview: agents, reports, calendar, spending
+- **onboard_knowledge** — Search existing + add new knowledge (params: topic, title, content, category)
+- **weekly_audit** — Lab status, costs, all reports, strategy progress
 
 ## How to Work
 - Execute requests immediately with tools. Don't ask for confirmation — just do it and report what you did.
 - If the user wants a specialist agent that doesn't exist, create one with manage_agents(action="create"), then use it.
 - If the user doesn't specify an agent, choose the best one: Scout for research/leads, Quill for content/writing, Forge for tech, Radar for outreach/sales.
 - Chain multiple tools when needed (e.g., create agent → create schedule → run job — all in one turn).
+- For multi-step workflows, prefer using skills (execute_skill) over chaining tools manually.
 - Always explain what you did and what happened.
 - Use British English. Be direct, no fluff.
 - Apply Hormozi's priority framework: (1) Revenue (2) Credibility/proof (3) Distribution (4) Product strength.
@@ -299,6 +308,49 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_skill",
+            "description": "Run a pre-defined or custom skill (multi-step workflow). Skills chain multiple tools together automatically. Use 'manage_skills' with action='list' to see available skills first.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {"type": "string", "description": "Name of the skill to run (e.g. deploy_agent, morning_briefing, weekly_audit)"},
+                    "params": {"type": "object", "description": "Parameters the skill needs (varies per skill)"},
+                },
+                "required": ["skill_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "manage_skills",
+            "description": "Manage skills (multi-step workflows): list available, create custom, delete custom, or get details.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["list", "create", "delete", "get"], "description": "What to do"},
+                    "name": {"type": "string", "description": "Skill name (for get/create/delete)"},
+                    "description": {"type": "string", "description": "Skill description (create only)"},
+                    "params": {"type": "array", "items": {"type": "string"}, "description": "Parameter names the skill accepts (create only)"},
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "tool_name": {"type": "string"},
+                                "args": {"type": "object"},
+                            },
+                        },
+                        "description": "Skill steps — each has tool_name and args with {param.X} and {prev_result} templates (create only)",
+                    },
+                },
+                "required": ["action"],
+            },
+        },
+    },
 ]
 
 
@@ -307,7 +359,8 @@ class MasterChat:
 
     def __init__(self, agent_manager, scheduler_manager, strategy_manager,
                  report_manager, knowledge_manager, agent_memory_manager,
-                 correction_manager, cost_tracker, notion_bridge=None, ws_manager=None):
+                 correction_manager, cost_tracker, notion_bridge=None,
+                 ws_manager=None, skill_manager=None):
         self.agent_manager = agent_manager
         self.scheduler_manager = scheduler_manager
         self.strategy_manager = strategy_manager
@@ -318,6 +371,7 @@ class MasterChat:
         self.cost_tracker = cost_tracker
         self.notion_bridge = notion_bridge
         self.ws_manager = ws_manager
+        self.skill_manager = skill_manager
 
     # --- Config ---
 
@@ -389,6 +443,13 @@ class MasterChat:
             if name_lower in job.get("name", "").lower():
                 return job
         return None
+
+    def _get_skill_executor(self):
+        """Lazy-create a SkillExecutor bound to this MasterChat instance."""
+        if not hasattr(self, "_skill_executor") or self._skill_executor is None:
+            from app.skills import SkillExecutor
+            self._skill_executor = SkillExecutor(self)
+        return self._skill_executor
 
     # --- Tool Execution ---
 
@@ -867,6 +928,70 @@ class MasterChat:
                 auto_correction = " Auto-correction created for the agent." if args["rating"] <= 2 else ""
                 return f"Rated '{job['name']}' execution: {'⭐' * args['rating']}{auto_correction}"
 
+            # --- Skills ---
+
+            elif tool_name == "execute_skill":
+                if not self.skill_manager:
+                    return "Skills system not available."
+                executor = self._get_skill_executor()
+                result = await executor.execute(
+                    args["skill_name"],
+                    args.get("params", {}),
+                )
+                if result.get("error"):
+                    return result["error"]
+                return result.get("summary", "Skill completed with no summary.")
+
+            elif tool_name == "manage_skills":
+                if not self.skill_manager:
+                    return "Skills system not available."
+                action = args["action"]
+
+                if action == "list":
+                    skills = self.skill_manager.list_all()
+                    if not skills:
+                        return "No skills available."
+                    lines = []
+                    for s in skills:
+                        tag = " (built-in)" if s.get("builtin") else ""
+                        params = ", ".join(s.get("params", [])) or "none"
+                        lines.append(f"- **{s['name']}**{tag} — {s['description']} [params: {params}]")
+                    return "\n".join(lines)
+
+                elif action == "get":
+                    skill = self.skill_manager.get(args.get("name", ""))
+                    if not skill:
+                        return f"Skill '{args.get('name', '')}' not found."
+                    steps_desc = []
+                    for i, step in enumerate(skill.get("steps", [])):
+                        steps_desc.append(f"  {i+1}. {step['tool_name']}({json.dumps(step.get('args', {}))})")
+                    return (
+                        f"**{skill['name']}** — {skill['description']}\n"
+                        f"Params: {', '.join(skill.get('params', [])) or 'none'}\n"
+                        f"Steps:\n" + "\n".join(steps_desc)
+                    )
+
+                elif action == "create":
+                    if not args.get("name") or not args.get("steps"):
+                        return "name and steps are required to create a skill."
+                    skill = self.skill_manager.create(
+                        name=args["name"],
+                        description=args.get("description", ""),
+                        steps=args["steps"],
+                        params=args.get("params", []),
+                    )
+                    return f"Skill created: **{skill['name']}** with {len(skill['steps'])} steps."
+
+                elif action == "delete":
+                    if not args.get("name"):
+                        return "name is required for delete."
+                    result = self.skill_manager.delete(args["name"])
+                    if result:
+                        return f"Skill '{args['name']}' deleted."
+                    return f"Cannot delete '{args['name']}' — either built-in or not found."
+
+                return f"Unknown manage_skills action: {action}"
+
             else:
                 return f"Unknown tool: {tool_name}"
 
@@ -928,6 +1053,7 @@ class MasterChat:
                 "run", "execute", "list", "show", "check", "find", "search",
                 "publish", "correct", "rate", "update", "toggle", "pause", "resume",
                 "status", "how much", "spending", "cost", "star", "unstar",
+                "skill", "deploy", "briefing", "audit", "onboard",
             ]
             msg_lower = user_message.lower()
             is_action = any(kw in msg_lower for kw in action_keywords)

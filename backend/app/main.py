@@ -51,6 +51,7 @@ from app.memory_engine import (
 from app.notion_bridge import NotionBridge
 from app.strategy_manager import StrategyManager
 from app.master_chat import MasterChat
+from app.skills import SkillManager
 
 # Initialize managers
 agent_manager = AgentManager()
@@ -88,6 +89,9 @@ scheduler_manager.notion_bridge = notion_bridge
 # Strategy manager
 strategy_manager = StrategyManager()
 
+# Skill manager
+skill_manager = SkillManager()
+
 # Master Chat
 master_chat = MasterChat(
     agent_manager=agent_manager,
@@ -100,6 +104,7 @@ master_chat = MasterChat(
     cost_tracker=cost_tracker,
     notion_bridge=notion_bridge,
     ws_manager=ws_manager,
+    skill_manager=skill_manager,
 )
 
 
@@ -1396,6 +1401,43 @@ async def master_chat_tools():
             for t in TOOLS
         ],
     }
+
+
+# --- SKILLS ENDPOINTS ---
+
+@app.get("/api/skills")
+async def list_skills():
+    return skill_manager.list_all()
+
+
+@app.post("/api/skills")
+async def create_skill(data: dict = Body(...)):
+    name = data.get("name")
+    if not name or not data.get("steps"):
+        raise HTTPException(400, "name and steps are required")
+    skill = skill_manager.create(
+        name=name,
+        description=data.get("description", ""),
+        steps=data["steps"],
+        params=data.get("params", []),
+    )
+    return skill
+
+
+@app.delete("/api/skills/{skill_id}")
+async def delete_skill(skill_id: str):
+    result = skill_manager.delete(skill_id)
+    if not result:
+        raise HTTPException(400, "Cannot delete — built-in skill or not found")
+    return {"status": "deleted"}
+
+
+@app.post("/api/skills/{name}/run")
+async def run_skill(name: str, data: dict = Body(default={})):
+    from app.skills import SkillExecutor
+    executor = SkillExecutor(master_chat)
+    result = await executor.execute(name, data.get("params", {}))
+    return result
 
 
 # --- STRATEGY ENDPOINTS ---
