@@ -21,11 +21,17 @@ BUILT_IN_SKILLS = {
     "deploy_agent": {
         "id": "deploy_agent",
         "name": "deploy_agent",
-        "description": "Full agent deployment: create agent, add KB context, schedule recurring job, create Notion tracking task, and verify with first chat.",
+        "description": "Full agent deployment: create agent, add KB context, schedule recurring job, create Notion tracking task, verify with first chat, and confirm schedule saved.",
         "builtin": True,
         "params": ["name", "role", "goal", "backstory", "prompt", "frequency", "time"],
+        "defaults": {
+            "frequency": "daily",
+            "time": "09:00",
+            "prompt": "Deliver your daily output based on your role as {param.role} and goal: {param.goal}",
+        },
         "steps": [
             {
+                "label": "Create agent",
                 "tool_name": "manage_agents",
                 "args": {
                     "action": "create",
@@ -36,6 +42,7 @@ BUILT_IN_SKILLS = {
                 },
             },
             {
+                "label": "Add KB context",
                 "tool_name": "manage_knowledge",
                 "args": {
                     "action": "add",
@@ -45,10 +52,11 @@ BUILT_IN_SKILLS = {
                 },
             },
             {
+                "label": "Create schedule",
                 "tool_name": "manage_schedules",
                 "args": {
                     "action": "create",
-                    "job_name": "{param.name} Daily",
+                    "job_name": "{param.name} Daily Report",
                     "agent_name": "{param.name}",
                     "prompt": "{param.prompt}",
                     "frequency": "{param.frequency}",
@@ -56,6 +64,7 @@ BUILT_IN_SKILLS = {
                 },
             },
             {
+                "label": "Create Notion tracking task",
                 "tool_name": "manage_notion_tasks",
                 "args": {
                     "action": "create",
@@ -66,11 +75,17 @@ BUILT_IN_SKILLS = {
                 },
             },
             {
+                "label": "Verify agent responds",
                 "tool_name": "chat_with_agent",
                 "args": {
                     "agent_name": "{param.name}",
                     "message": "Introduce yourself and confirm you understand your role: {param.role}. Then give a brief preview of what you'll deliver for your first scheduled task: {param.prompt}",
                 },
+            },
+            {
+                "label": "Verify schedule saved",
+                "tool_name": "manage_schedules",
+                "args": {"action": "list"},
             },
         ],
     },
@@ -216,6 +231,9 @@ class SkillManager:
 class SkillExecutor:
     """Executes skill workflows by chaining master_chat._execute_tool calls."""
 
+    # Patterns that indicate _execute_tool returned an error (it catches exceptions and returns strings)
+    ERROR_PREFIXES = ("Tool error", "Agent '", "Job '", "not found", "not configured", "Failed to", "entry_id is required", "report_id is required", "strategy_id is required", "page_id is required")
+
     def __init__(self, master_chat):
         self.master_chat = master_chat
 
@@ -229,7 +247,14 @@ class SkillExecutor:
             available = [s["name"] for s in skill_manager.list_all()]
             return {"skill": skill_name, "error": f"Skill not found. Available: {', '.join(available)}"}
 
-        params = params or {}
+        # Apply defaults for missing params
+        params = dict(params or {})
+        defaults = skill.get("defaults", {})
+        for key, default_val in defaults.items():
+            if key not in params or not params[key]:
+                # Default values can themselves contain {param.X} templates
+                params[key] = self._resolve_template(default_val, params, "")
+
         step_results = []
         prev_result = ""
 
@@ -237,51 +262,80 @@ class SkillExecutor:
 
         for i, step in enumerate(skill["steps"]):
             tool_name = step["tool_name"]
+            label = step.get("label", tool_name)
             raw_args = step.get("args", {})
 
             # Template replacement
             resolved_args = {}
             for key, val in raw_args.items():
                 if isinstance(val, str):
-                    resolved_args[key] = self._resolve_template(val, params, prev_result)
+                    resolved = self._resolve_template(val, params, prev_result)
+                    # Detect unreplaced templates — means a required param is missing
+                    if "{param." in resolved:
+                        import re
+                        missing = re.findall(r"\{param\.(\w+)\}", resolved)
+                        logger.warning(f"Skill [{skill_name}] step {i+1}: unresolved params {missing} in {key}")
+                    resolved_args[key] = resolved
                 else:
                     resolved_args[key] = val
 
-            logger.info(f"Skill [{skill_name}] step {i+1}/{len(skill['steps'])}: {tool_name}({resolved_args})")
+            logger.info(f"Skill [{skill_name}] step {i+1}/{len(skill['steps'])} [{label}]: {tool_name}({resolved_args})")
 
             try:
                 result = await self.master_chat._execute_tool(tool_name, resolved_args)
-                prev_result = result
-                step_results.append({
-                    "step": i + 1,
-                    "tool": tool_name,
-                    "status": "ok",
-                    "result": result,
-                })
-                logger.info(f"Skill [{skill_name}] step {i+1}: ok ({len(result)} chars)")
+
+                # Detect tool error strings (not exceptions)
+                is_error = self._is_tool_error(result)
+                if is_error:
+                    prev_result = f"[Step {i+1} ({label}) failed: {result}]"
+                    step_results.append({
+                        "step": i + 1,
+                        "label": label,
+                        "tool": tool_name,
+                        "status": "error",
+                        "result": result,
+                    })
+                    logger.warning(f"Skill [{skill_name}] step {i+1} [{label}]: tool returned error — {result[:200]}")
+                else:
+                    prev_result = result
+                    step_results.append({
+                        "step": i + 1,
+                        "label": label,
+                        "tool": tool_name,
+                        "status": "ok",
+                        "result": result,
+                    })
+                    logger.info(f"Skill [{skill_name}] step {i+1} [{label}]: ok ({len(result)} chars)")
             except Exception as e:
-                error_msg = f"Step error: {str(e)}"
-                # Include error in prev_result so next step has context
-                prev_result = f"[Previous step failed: {error_msg}]"
+                error_msg = str(e)
+                prev_result = f"[Step {i+1} ({label}) exception: {error_msg}]"
                 step_results.append({
                     "step": i + 1,
+                    "label": label,
                     "tool": tool_name,
                     "status": "error",
-                    "result": error_msg,
+                    "result": f"Exception: {error_msg}",
                 })
-                logger.warning(f"Skill [{skill_name}] step {i+1}: error — {e}")
+                logger.warning(f"Skill [{skill_name}] step {i+1} [{label}]: exception — {e}")
 
-        # Build summary
+        # Build summary with clear error reporting
         ok_count = sum(1 for s in step_results if s["status"] == "ok")
+        error_count = len(step_results) - ok_count
         summary_parts = []
         for sr in step_results:
-            prefix = "✓" if sr["status"] == "ok" else "✗"
-            preview = sr["result"][:200] if sr["result"] else ""
-            summary_parts.append(f"**Step {sr['step']}** ({sr['tool']}) {prefix}\n{preview}")
+            prefix = "✓" if sr["status"] == "ok" else "✗ FAILED"
+            label = sr.get("label", sr["tool"])
+            preview = sr["result"][:300] if sr["result"] else ""
+            summary_parts.append(f"**Step {sr['step']}: {label}** {prefix}\n{preview}")
 
-        summary = f"**Skill: {skill_name}** — {ok_count}/{len(step_results)} steps completed\n\n" + "\n\n".join(summary_parts)
+        status_line = f"**Skill: {skill_name}** — {ok_count}/{len(step_results)} steps succeeded"
+        if error_count > 0:
+            failed_labels = [sr.get("label", sr["tool"]) for sr in step_results if sr["status"] == "error"]
+            status_line += f" | {error_count} FAILED: {', '.join(failed_labels)}"
 
-        logger.info(f"Skill [{skill_name}]: done — {ok_count}/{len(step_results)} ok")
+        summary = status_line + "\n\n" + "\n\n".join(summary_parts)
+
+        logger.info(f"Skill [{skill_name}]: done — {ok_count}/{len(step_results)} ok, {error_count} errors")
 
         # Broadcast skill completion via WebSocket
         ws_manager = getattr(self.master_chat, "ws_manager", None)
@@ -291,7 +345,8 @@ class SkillExecutor:
                     "skill": skill_name,
                     "ok": ok_count,
                     "total": len(step_results),
-                    "summary": summary[:300],
+                    "errors": error_count,
+                    "summary": summary[:500],
                 })
             except Exception:
                 pass
@@ -302,7 +357,21 @@ class SkillExecutor:
             "summary": summary,
             "ok": ok_count,
             "total": len(step_results),
+            "errors": error_count,
         }
+
+    @classmethod
+    def _is_tool_error(cls, result: str) -> bool:
+        """Detect if _execute_tool returned an error string instead of raising."""
+        if not result:
+            return False
+        for prefix in cls.ERROR_PREFIXES:
+            if result.startswith(prefix):
+                return True
+        # Also catch the generic pattern
+        if "not found" in result.lower() and len(result) < 200:
+            return True
+        return False
 
     @staticmethod
     def _resolve_template(template: str, params: dict, prev_result: str) -> str:
