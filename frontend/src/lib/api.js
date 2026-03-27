@@ -353,7 +353,23 @@ export async function importKnowledgeFiles(entries) {
 
 // Master Chat
 export async function sendMasterChat(message) {
-  return api('/api/master-chat', { method: 'POST', body: JSON.stringify({ message }) })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 95000)
+  try {
+    const result = await api('/api/master-chat', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    return result
+  } catch (err) {
+    clearTimeout(timer)
+    if (err.name === 'AbortError') {
+      return { response: 'Request timed out. Try a shorter prompt or break it into steps.' }
+    }
+    throw err
+  }
 }
 
 export async function getMasterChatHistory() {

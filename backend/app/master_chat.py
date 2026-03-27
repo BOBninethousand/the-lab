@@ -1061,7 +1061,7 @@ class MasterChat:
         # Build conversation messages (last 20 for context)
         history = self.get_history()
         messages = [{"role": "system", "content": system_prompt}]
-        for msg in history[-20:]:
+        for msg in history[-10:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": user_message})
 
@@ -1073,13 +1073,13 @@ class MasterChat:
             logger.info(f"Master Chat: provider={provider}, model={model}, tools={len(TOOLS)}, history={len(history)}")
 
             if provider == "openai":
-                client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
+                client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=90.0)
             elif provider == "anthropic":
                 # Anthropic tool use via openai-compatible endpoint not supported
                 # Fall back to openai for now, or use langchain
-                client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
+                client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=90.0)
             else:
-                client = OpenAI(api_key="ollama", base_url=settings.OLLAMA_BASE_URL + "/v1")
+                client = OpenAI(api_key="ollama", base_url=settings.OLLAMA_BASE_URL + "/v1", timeout=90.0)
 
             # Detect action-oriented messages and force tool usage
             action_keywords = [
