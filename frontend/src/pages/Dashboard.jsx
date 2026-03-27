@@ -105,16 +105,29 @@ export function Dashboard() {
 
   useEffect(() => { loadData() }, [])
 
-  // Re-fetch when data-changing events arrive via WebSocket
+  // Reactive state updates on WebSocket events — no full reloads
   useEffect(() => {
-    if (events.length > 0) {
-      const latest = events[0]
-      setActivity(events)
-      const refreshTypes = ['agent_created', 'agent_deleted', 'report_created', 'report_updated', 'schedule_changed', 'strategy_changed', 'task_completed', 'skill_completed', 'knowledge_changed', 'correction_added']
-      if (refreshTypes.includes(latest.type)) {
-        loadData()
-      }
+    if (events.length === 0) return
+    const e = events[0]
+    setActivity(events)
+
+    if (e.type === 'agent_created' && e.data) {
+      setAgents(prev => prev.some(a => a.id === e.data.id) ? prev : [...prev, e.data])
+    } else if (e.type === 'agent_deleted' && e.data?.id) {
+      setAgents(prev => prev.filter(a => a.id !== e.data.id))
+    } else if (e.type === 'agent_status' && e.data?.id) {
+      setAgents(prev => prev.map(a => a.id === e.data.id ? { ...a, status: e.data.status, current_task: e.data.current_task } : a))
+    } else if (e.type === 'report_created' && e.data) {
+      setLatestReports(prev => [e.data, ...prev].slice(0, 4))
+      setReportStats(prev => prev ? { ...prev, total: prev.total + 1, today: prev.today + 1 } : prev)
+    } else if (e.type === 'schedule_changed') {
+      getSchedule().catch(() => []).then(d => setSchedule(Array.isArray(d) ? d : []))
+    } else if (e.type === 'strategy_changed') {
+      getStrategies().catch(() => []).then(d => setStrategies(Array.isArray(d) ? d : []))
+    } else if (e.type === 'report_updated') {
+      getReports({ limit: 4 }).catch(() => []).then(d => setLatestReports(Array.isArray(d) ? d : []))
     }
+    // skill_completed, knowledge_changed, correction_added, task_completed — activity feed only, no data reload needed
   }, [events])
 
   const onlineAgents = agents.length

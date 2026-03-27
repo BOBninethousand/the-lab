@@ -60,13 +60,16 @@ export function Calendar() {
     if (selectedJob) loadExecutions(selectedJob.id)
   }, [selectedJob])
 
-  // Re-fetch when schedules change from other sources (Master Chat, other tabs)
+  // Targeted updates on WebSocket events
   useEffect(() => {
-    if (events.length > 0) {
-      const e = events[0]
-      if (['schedule_changed', 'agent_created', 'agent_deleted'].includes(e.type)) {
-        loadData()
-      }
+    if (events.length === 0) return
+    const e = events[0]
+    if (e.type === 'schedule_changed') {
+      getSchedule().catch(() => []).then(d => setJobs(Array.isArray(d) ? d : []))
+    } else if (e.type === 'agent_created' && e.data) {
+      setAgents(prev => prev.some(a => a.id === e.data.id) ? prev : [...prev, e.data])
+    } else if (e.type === 'agent_deleted' && e.data?.id) {
+      setAgents(prev => prev.filter(a => a.id !== e.data.id))
     }
   }, [events])
 

@@ -82,8 +82,14 @@ export function OfficeCss() {
             : prev
         )
       }
-      if (lastEvent.type === 'agent_created' || lastEvent.type === 'agent_deleted') {
-        loadAgents()
+      if (lastEvent.type === 'agent_created' && lastEvent.data) {
+        setAgents(prev => {
+          if (prev.some(a => a.id === lastEvent.data.id)) return prev
+          return [...prev, lastEvent.data]
+        })
+      }
+      if (lastEvent.type === 'agent_deleted' && lastEvent.data?.id) {
+        setAgents(prev => prev.filter(a => a.id !== lastEvent.data.id))
       }
     }
   }, [events])

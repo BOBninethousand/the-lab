@@ -85,9 +85,14 @@ export function Strategy() {
       if (e.type === 'agent_status' && e.data?.id) {
         setAgentStatuses(prev => ({ ...prev, [e.data.id]: { status: e.data.status, current_task: e.data.current_task } }))
       }
-      const refreshTypes = ['agent_created', 'agent_deleted', 'schedule_changed', 'strategy_changed', 'report_created', 'report_updated', 'task_completed', 'skill_completed']
-      if (refreshTypes.includes(e.type)) {
-        loadData()
+      if (e.type === 'strategy_changed') {
+        getStrategies().catch(() => []).then(d => setStrategies(Array.isArray(d) ? d : []))
+      } else if (e.type === 'agent_created' && e.data) {
+        setAgents(prev => prev.some(a => a.id === e.data.id) ? prev : [...prev, e.data])
+      } else if (e.type === 'agent_deleted' && e.data?.id) {
+        setAgents(prev => prev.filter(a => a.id !== e.data.id))
+      } else if (e.type === 'schedule_changed') {
+        getSchedule().catch(() => []).then(d => setSchedule(Array.isArray(d) ? d : []))
       }
     }
   }, [events])

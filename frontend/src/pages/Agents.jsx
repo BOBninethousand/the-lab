@@ -76,8 +76,14 @@ export function Agents() {
             a.id === msg.data.id ? { ...a, status: msg.data.status, current_task: msg.data.current_task } : a
           ))
         }
-        if (msg.type === 'agent_created' || msg.type === 'agent_deleted') {
-          loadAgents()
+        if (msg.type === 'agent_created' && msg.data) {
+          setAgents(prev => {
+            if (prev.some(a => a.id === msg.data.id)) return prev
+            return [...prev, msg.data]
+          })
+        }
+        if (msg.type === 'agent_deleted' && msg.data?.id) {
+          setAgents(prev => prev.filter(a => a.id !== msg.data.id))
         }
       } catch (e) {
         // ignore
