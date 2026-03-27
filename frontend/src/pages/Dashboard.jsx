@@ -110,7 +110,7 @@ export function Dashboard() {
     if (events.length > 0) {
       const latest = events[0]
       setActivity(events)
-      const refreshTypes = ['agent_created', 'agent_deleted', 'report_created', 'schedule_changed', 'strategy_changed', 'task_completed']
+      const refreshTypes = ['agent_created', 'agent_deleted', 'report_created', 'report_updated', 'schedule_changed', 'strategy_changed', 'task_completed', 'skill_completed', 'knowledge_changed', 'correction_added']
       if (refreshTypes.includes(latest.type)) {
         loadData()
       }

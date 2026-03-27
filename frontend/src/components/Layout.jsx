@@ -50,7 +50,20 @@ const pageNames = {
 
 export function Layout({ children }) {
   const location = useLocation()
-  const { isConnected } = useWebSocket()
+  const { isConnected, events } = useWebSocket()
+  const [toast, setToast] = React.useState(null)
+
+  // Show toast on skill_completed events
+  React.useEffect(() => {
+    if (events.length > 0) {
+      const latest = events[0]
+      if (latest.type === 'skill_completed' && latest.data) {
+        const { skill, ok, total } = latest.data
+        setToast(`Skill "${skill}" completed — ${ok}/${total} steps`)
+        setTimeout(() => setToast(null), 5000)
+      }
+    }
+  }, [events])
 
   const currentPageName = pageNames[location.pathname] || 'Dashboard'
 
@@ -147,6 +160,16 @@ export function Layout({ children }) {
           <div className="p-4 md:p-6 lg:p-8">{children}</div>
         </div>
       </div>
+
+      {/* Skill completion toast */}
+      {toast && (
+        <div className="fixed bottom-20 right-6 z-50 bg-lab-surface border border-lab-accent/30 text-lab-text-primary px-4 py-3 rounded-lg shadow-lg text-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <Zap size={14} className="text-lab-accent" />
+            <span>{toast}</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

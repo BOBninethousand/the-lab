@@ -21,7 +21,7 @@ BUILT_IN_SKILLS = {
     "deploy_agent": {
         "id": "deploy_agent",
         "name": "deploy_agent",
-        "description": "Create a new agent, schedule a recurring job, and run its first execution immediately.",
+        "description": "Full agent deployment: create agent, add KB context, schedule recurring job, create Notion tracking task, and verify with first chat.",
         "builtin": True,
         "params": ["name", "role", "goal", "backstory", "prompt", "frequency", "time"],
         "steps": [
@@ -36,6 +36,15 @@ BUILT_IN_SKILLS = {
                 },
             },
             {
+                "tool_name": "manage_knowledge",
+                "args": {
+                    "action": "add",
+                    "title": "Agent: {param.name}",
+                    "content": "Role: {param.role}. Goal: {param.goal}. Backstory: {param.backstory}. Scheduled prompt: {param.prompt}",
+                    "category": "reference",
+                },
+            },
+            {
                 "tool_name": "manage_schedules",
                 "args": {
                     "action": "create",
@@ -47,26 +56,39 @@ BUILT_IN_SKILLS = {
                 },
             },
             {
-                "tool_name": "run_job_now",
-                "args": {"job_name": "{param.name} Daily"},
+                "tool_name": "manage_notion_tasks",
+                "args": {
+                    "action": "create",
+                    "title": "Review {param.name} first output",
+                    "agent_name": "{param.name}",
+                    "priority": "Medium",
+                    "handoff_notes": "Check {param.name}'s first scheduled output for quality and tone.",
+                },
+            },
+            {
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "{param.name}",
+                    "message": "Introduce yourself and confirm you understand your role: {param.role}. Then give a brief preview of what you'll deliver for your first scheduled task: {param.prompt}",
+                },
             },
         ],
     },
     "morning_briefing": {
         "id": "morning_briefing",
         "name": "morning_briefing",
-        "description": "Get a complete morning overview: Lab status, recent reports, upcoming schedule, and spending.",
+        "description": "Daily ops summary: Lab status, today's schedule, latest reports, and spending.",
         "builtin": True,
         "params": [],
         "steps": [
             {"tool_name": "get_lab_status", "args": {}},
             {
-                "tool_name": "manage_reports",
-                "args": {"action": "list", "limit": 5},
+                "tool_name": "manage_schedules",
+                "args": {"action": "calendar", "days": 1},
             },
             {
-                "tool_name": "manage_schedules",
-                "args": {"action": "calendar", "days": 3},
+                "tool_name": "manage_reports",
+                "args": {"action": "list", "limit": 5},
             },
             {"tool_name": "get_cost_summary", "args": {"days": 7}},
         ],
@@ -74,9 +96,9 @@ BUILT_IN_SKILLS = {
     "onboard_knowledge": {
         "id": "onboard_knowledge",
         "name": "onboard_knowledge",
-        "description": "Search for existing knowledge on a topic, then add new knowledge entries.",
+        "description": "Bulk knowledge import: search existing, add new entries, list agents for assignment, and create correction rules.",
         "builtin": True,
-        "params": ["topic", "title", "content", "category"],
+        "params": ["topic", "title", "content", "category", "agent_name", "correction"],
         "steps": [
             {
                 "tool_name": "search_knowledge",
@@ -91,12 +113,24 @@ BUILT_IN_SKILLS = {
                     "category": "{param.category}",
                 },
             },
+            {
+                "tool_name": "manage_agents",
+                "args": {"action": "list"},
+            },
+            {
+                "tool_name": "add_correction",
+                "args": {
+                    "agent_name": "{param.agent_name}",
+                    "original_response": "Did not use knowledge: {param.title}",
+                    "correction": "{param.correction}",
+                },
+            },
         ],
     },
     "weekly_audit": {
         "id": "weekly_audit",
         "name": "weekly_audit",
-        "description": "Full weekly audit: Lab status, 7-day spending, all reports, and strategy progress.",
+        "description": "Full weekly review: Lab status, 7-day costs, all reports, strategy progress, and publish audit to Notion.",
         "builtin": True,
         "params": [],
         "steps": [
@@ -109,6 +143,15 @@ BUILT_IN_SKILLS = {
             {
                 "tool_name": "manage_strategies",
                 "args": {"action": "list"},
+            },
+            {
+                "tool_name": "publish_to_notion",
+                "args": {
+                    "title": "Weekly Audit",
+                    "content": "{prev_result}",
+                    "agent_name": "Master Chat",
+                    "report_type": "weekly_review",
+                },
             },
         ],
     },
@@ -218,6 +261,8 @@ class SkillExecutor:
                 logger.info(f"Skill [{skill_name}] step {i+1}: ok ({len(result)} chars)")
             except Exception as e:
                 error_msg = f"Step error: {str(e)}"
+                # Include error in prev_result so next step has context
+                prev_result = f"[Previous step failed: {error_msg}]"
                 step_results.append({
                     "step": i + 1,
                     "tool": tool_name,
@@ -237,6 +282,19 @@ class SkillExecutor:
         summary = f"**Skill: {skill_name}** — {ok_count}/{len(step_results)} steps completed\n\n" + "\n\n".join(summary_parts)
 
         logger.info(f"Skill [{skill_name}]: done — {ok_count}/{len(step_results)} ok")
+
+        # Broadcast skill completion via WebSocket
+        ws_manager = getattr(self.master_chat, "ws_manager", None)
+        if ws_manager:
+            try:
+                await ws_manager.broadcast("skill_completed", {
+                    "skill": skill_name,
+                    "ok": ok_count,
+                    "total": len(step_results),
+                    "summary": summary[:300],
+                })
+            except Exception:
+                pass
 
         return {
             "skill": skill_name,

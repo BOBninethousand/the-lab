@@ -163,6 +163,9 @@ export function Documents() {
         setToast(`New report from ${latest.data.agent_name}`)
         setTimeout(() => setToast(null), 4000)
       }
+      if (latest.type === 'report_updated') {
+        loadReports()
+      }
     }
   }, [events])
 

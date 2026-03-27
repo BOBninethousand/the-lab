@@ -605,6 +605,8 @@ class MasterChat:
                         agent_id=agent.id,
                     )
                     job = self.scheduler_manager.add_job_simple(job_data)
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("schedule_changed", {"action": "created", "name": args["job_name"]})
                     return f"Schedule created: '{args['job_name']}' — {args.get('frequency', 'daily')} at {args.get('time', '09:00')} with {agent.name}. Job ID: {job.id}"
 
                 elif action == "list":
@@ -624,6 +626,8 @@ class MasterChat:
                     if not job:
                         return f"Job '{args.get('job_name', '')}' not found."
                     self.scheduler_manager.remove_job(job["id"])
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("schedule_changed", {"action": "deleted", "name": job["name"]})
                     return f"Schedule '{job['name']}' deleted."
 
                 elif action == "toggle":
@@ -632,6 +636,8 @@ class MasterChat:
                         return f"Job '{args.get('job_name', '')}' not found."
                     self.scheduler_manager.toggle_job(job["id"])
                     new_state = "paused" if job.get("enabled") else "resumed"
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("schedule_changed", {"action": "toggled", "name": job["name"]})
                     return f"Job '{job['name']}' {new_state}."
 
                 elif action == "executions":
@@ -693,18 +699,24 @@ class MasterChat:
                     if not args.get("report_id"):
                         return "report_id is required for delete."
                     result = self.report_manager.delete_report(args["report_id"])
+                    if self.ws_manager and result:
+                        await self.ws_manager.broadcast("report_updated", {"action": "deleted", "report_id": args["report_id"]})
                     return "Report deleted." if result else "Report not found."
 
                 elif action == "star":
                     if not args.get("report_id"):
                         return "report_id is required for star."
                     self.report_manager.update_report(args["report_id"], {"starred": True})
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("report_updated", {"action": "starred", "report_id": args["report_id"]})
                     return "Report starred."
 
                 elif action == "unstar":
                     if not args.get("report_id"):
                         return "report_id is required for unstar."
                     self.report_manager.update_report(args["report_id"], {"starred": False})
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("report_updated", {"action": "unstarred", "report_id": args["report_id"]})
                     return "Report unstarred."
 
                 return f"Unknown manage_reports action: {action}"
@@ -720,6 +732,8 @@ class MasterChat:
                         category=args.get("category", "fact"),
                         tags=[],
                     ))
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("knowledge_changed", {"action": "added", "title": args["title"]})
                     return f"Knowledge added: '{args['title']}' ({args.get('category', 'fact')})"
 
                 elif action == "update":
@@ -731,12 +745,16 @@ class MasterChat:
                     if args.get("content"):
                         updates["content"] = args["content"]
                     result = await self.knowledge_manager.update(args["entry_id"], updates)
+                    if self.ws_manager and result:
+                        await self.ws_manager.broadcast("knowledge_changed", {"action": "updated", "entry_id": args["entry_id"]})
                     return "Knowledge entry updated." if result else "Entry not found."
 
                 elif action == "delete":
                     if not args.get("entry_id"):
                         return "entry_id is required for delete."
                     result = self.knowledge_manager.delete(args["entry_id"])
+                    if self.ws_manager and result:
+                        await self.ws_manager.broadcast("knowledge_changed", {"action": "deleted", "entry_id": args["entry_id"]})
                     return "Knowledge entry deleted." if result else "Entry not found."
 
                 return f"Unknown manage_knowledge action: {action}"
@@ -756,6 +774,8 @@ class MasterChat:
                         "approach": args.get("approach", ""),
                         "agent_ids": agent_ids,
                     })
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("strategy_changed", {"action": "created", "title": strategy["title"]})
                     return f"Strategy created: '{strategy['title']}' with {len(agent_ids)} agent(s) assigned."
 
                 elif action == "list":
@@ -793,12 +813,16 @@ class MasterChat:
                                 agent_ids.append(agent.id)
                         updates["agent_ids"] = agent_ids
                     result = self.strategy_manager.update(args["strategy_id"], updates)
+                    if self.ws_manager and result:
+                        await self.ws_manager.broadcast("strategy_changed", {"action": "updated", "strategy_id": args["strategy_id"]})
                     return "Strategy updated." if result else "Strategy not found."
 
                 elif action == "delete":
                     if not args.get("strategy_id"):
                         return "strategy_id is required for delete."
                     result = self.strategy_manager.delete(args["strategy_id"])
+                    if self.ws_manager and result:
+                        await self.ws_manager.broadcast("strategy_changed", {"action": "deleted", "strategy_id": args["strategy_id"]})
                     return "Strategy deleted." if result else "Strategy not found."
 
                 elif action == "progress":
@@ -836,6 +860,8 @@ class MasterChat:
                         handoff_notes=args.get("handoff_notes", ""),
                     )
                     if task:
+                        if self.ws_manager:
+                            await self.ws_manager.broadcast("task_created", {"title": task["title"]})
                         return f"Notion task created: **{task['title']}** — {task.get('url', 'No URL')}"
                     return "Failed to create Notion task. Check API configuration."
 
@@ -861,6 +887,8 @@ class MasterChat:
                     if not args.get("page_id"):
                         return "page_id is required for set_status."
                     result = await self.notion_bridge.set_status(args["page_id"], args.get("status", "In Progress"))
+                    if self.ws_manager and result:
+                        await self.ws_manager.broadcast("task_updated", {"page_id": args["page_id"], "status": args.get("status", "In Progress")})
                     return f"Task status updated to '{args.get('status', 'In Progress')}'." if result else "Failed to update status."
 
                 elif action == "push_result":
@@ -896,6 +924,8 @@ class MasterChat:
                     correction=args["correction"],
                 ))
                 promoted = " (auto-promoted to rule!)" if correction.occurrence_count >= 2 else ""
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("correction_added", {"agent_name": args["agent_name"]})
                 return f"Correction recorded for {agent.name}{promoted}: {args['correction'][:100]}"
 
             elif tool_name == "get_cost_summary":
@@ -980,6 +1010,8 @@ class MasterChat:
                         steps=args["steps"],
                         params=args.get("params", []),
                     )
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("skill_changed", {"action": "created", "name": args["name"]})
                     return f"Skill created: **{skill['name']}** with {len(skill['steps'])} steps."
 
                 elif action == "delete":
@@ -987,6 +1019,8 @@ class MasterChat:
                         return "name is required for delete."
                     result = self.skill_manager.delete(args["name"])
                     if result:
+                        if self.ws_manager:
+                            await self.ws_manager.broadcast("skill_changed", {"action": "deleted", "name": args["name"]})
                         return f"Skill '{args['name']}' deleted."
                     return f"Cannot delete '{args['name']}' — either built-in or not found."
 
