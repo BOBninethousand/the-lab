@@ -1134,11 +1134,19 @@ async def _handle_gateway_rpc(ws: WebSocket, raw: str) -> bool:
     params = msg.get("params", {})
 
     if method == "config.get":
+        # Build agents list from The Lab so Claw3D can .find() on it
+        lab_agents = agent_manager.list_agents()
+        agents_list = [
+            {"id": a.name.lower().replace(" ", "-"), "name": a.name,
+             "workspace": f"/root/.openclaw/workspace-{a.name.lower().replace(' ', '-')}"}
+            for a in lab_agents
+        ]
         await ws.send_text(json.dumps({
             "type": "res", "id": req_id, "ok": True,
             "payload": {
                 "path": "/root/.openclaw/openclaw.json",
                 "exists": True, "hash": "lab-config",
+                "config": {"agents": {"list": agents_list}},
             },
         }))
         return True
@@ -1179,6 +1187,25 @@ async def _handle_gateway_rpc(ws: WebSocket, raw: str) -> bool:
                 "agentId": slug, "name": name,
                 "workspace": workspace or f"/root/.openclaw/workspace-{slug}",
             },
+        }))
+        return True
+
+    if method == "agents.delete":
+        agent_name = params.get("name", "").strip()
+        agent_id = params.get("agentId", "").strip()
+        # Find agent in The Lab by name or slug
+        target = None
+        for a in agent_manager.list_agents():
+            slug = a.name.lower().replace(" ", "-")
+            if a.name == agent_name or a.id == agent_id or slug == agent_id:
+                target = a
+                break
+        if target:
+            agent_manager.delete_agent(target.id)
+            await ws_manager.broadcast("agent_deleted", {"id": target.id})
+        await ws.send_text(json.dumps({
+            "type": "res", "id": req_id, "ok": True,
+            "payload": {},
         }))
         return True
 
@@ -1396,30 +1423,31 @@ async def get_strategy_progress(strategy_id: str):
 @app.get("/api/dashboard/value-metrics")
 async def get_value_metrics():
     """Aggregate value metrics across all agents and strategies."""
-    all_reports = report_manager.list_reports()
-    mem_stats = get_memory_stats(knowledge_manager, agent_memory_manager, correction_manager)
-    agents = agent_manager.list_agents()
+    try:
+        all_reports = report_manager.list_reports()
+        mem_stats = get_memory_stats(knowledge_manager, agent_memory_manager, correction_manager)
+        agents = agent_manager.list_agents()
 
-    # Reports by agent
-    by_agent = {}
-    for r in all_reports:
-        name = r.get("agent_name", "Unknown")
-        by_agent[name] = by_agent.get(name, 0) + 1
+        by_agent = {}
+        for r in all_reports:
+            name = r.get("agent_name", "Unknown") if isinstance(r, dict) else getattr(r, "agent_name", "Unknown")
+            by_agent[name] = by_agent.get(name, 0) + 1
 
-    # Cost summary
-    cost_summary = cost_tracker.get_summary(days=30)
+        cost_summary = cost_tracker.get_summary(days=30)
 
-    return {
-        "total_reports": len(all_reports),
-        "reports_by_agent": by_agent,
-        "knowledge_entries": mem_stats.get("knowledge_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "knowledge_count", 0),
-        "agent_memories": mem_stats.get("agent_memory_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "agent_memory_count", 0),
-        "corrections": mem_stats.get("correction_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "correction_count", 0),
-        "auto_rules": mem_stats.get("rules_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "rules_count", 0),
-        "active_agents": len(agents),
-        "strategies_count": len(strategy_manager.list_all()),
-        "total_cost_30d": cost_summary.get("total_cost", 0) if isinstance(cost_summary, dict) else 0,
-    }
+        return {
+            "total_reports": len(all_reports),
+            "reports_by_agent": by_agent,
+            "knowledge_entries": mem_stats.get("knowledge_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "knowledge_count", 0),
+            "agent_memories": mem_stats.get("agent_memory_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "agent_memory_count", 0),
+            "corrections": mem_stats.get("correction_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "correction_count", 0),
+            "auto_rules": mem_stats.get("rules_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "rules_count", 0),
+            "active_agents": len(agents),
+            "strategies_count": len(strategy_manager.list_all()),
+            "total_cost_30d": cost_summary.get("total_cost", 0) if isinstance(cost_summary, dict) else 0,
+        }
+    except Exception as e:
+        return {"error": str(e), "total_reports": 0, "reports_by_agent": {}, "active_agents": 0, "strategies_count": 0}
 
 
 # --- SCAN DIRECTORY ENDPOINT (for co-work import) ---
