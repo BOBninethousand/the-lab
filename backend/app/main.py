@@ -1166,6 +1166,20 @@ async def _handle_gateway_rpc(ws: WebSocket, raw: str) -> bool:
         }))
         return True
 
+    # Catch-all: acknowledge methods Agent Bus doesn't support
+    # (agents.files.set, agents.files.get, config.patch, etc.)
+    AGENT_BUS_METHODS = {
+        "connect", "health", "agents.list", "config.get",
+        "sessions.list", "sessions.preview", "status",
+        "exec.approvals.get", "chat.send", "chat.abort",
+    }
+    if method not in AGENT_BUS_METHODS:
+        await ws.send_text(json.dumps({
+            "type": "res", "id": req_id, "ok": True,
+            "payload": {},
+        }))
+        return True
+
     return False
 
 
