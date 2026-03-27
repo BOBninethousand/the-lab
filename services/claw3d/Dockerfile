@@ -38,6 +38,25 @@ RUN sed -i 's/Luke Headquarters/The Lab HQ/g' \
     src/features/retro-office/RetroOffice3D.tsx \
     src/features/office/components/panels/SettingsPanel.tsx
 
+# 7. Rebrand OpenClaw UI text to The Lab
+RUN sed -i \
+    -e 's/OpenClaw Event Console/The Lab Event Console/g' \
+    -e 's/Live OpenClaw State/Live Agent State/g' \
+    -e 's/Live OpenClaw state/Live agent state/g' \
+    -e 's/Raw OpenClaw Gateway Events/Raw Gateway Events/g' \
+    -e 's/No OpenClaw gateway events/No gateway events/g' \
+    -e 's/No OpenClaw events/No events/g' \
+    -e 's/record from OpenClaw/record from The Lab/g' \
+    -e 's/openclaw-events-/lab-events-/g' \
+    src/features/office/screens/OfficeScreen.tsx && \
+  sed -i \
+    -e 's/Focused operator studio for the OpenClaw gateway\./The Lab — AI Agent Operations Hub/' \
+    src/app/layout.tsx && \
+  sed -i \
+    -e 's/your OpenClaw agents/your AI agents/g' \
+    -e 's/your OpenClaw gateway/your agent gateway/g' \
+    src/features/onboarding/components/WelcomeStep.tsx
+
 # --- Build ---
 
 # Build-time env (NEXT_PUBLIC_* baked into Next.js client bundle)
