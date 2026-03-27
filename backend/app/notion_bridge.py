@@ -376,6 +376,55 @@ class NotionBridge:
         ))
         return {"id": entry.id, "title": title, "action": "created"}
 
+    async def create_task(
+        self,
+        title: str,
+        agent_name: str = "",
+        priority: str = "Medium",
+        project: str = "",
+        handoff_notes: str = "",
+        source: str = "Master Chat",
+    ) -> Optional[dict]:
+        """Create a task in the Notion Agent Ops database. Returns normalized task dict or None."""
+        if not self.configured:
+            return None
+        try:
+            properties = {
+                "Task": {"title": [{"text": {"content": title}}]},
+                "Status": {"select": {"name": "New"}},
+                "Priority": {"select": {"name": priority}},
+                "Source": {"select": {"name": source}},
+            }
+            if agent_name:
+                properties["Agent"] = {"select": {"name": agent_name}}
+            if project:
+                properties["Project"] = {"select": {"name": project}}
+            if handoff_notes:
+                properties["Handoff Notes"] = {
+                    "rich_text": [{"text": {"content": handoff_notes}}]
+                }
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{self.BASE_URL}/pages",
+                    headers=self._headers(),
+                    json={
+                        "parent": {"database_id": self.database_id},
+                        "properties": properties,
+                    },
+                )
+                if resp.status_code == 200:
+                    page = resp.json()
+                    task = self._normalize_task(page)
+                    logger.info(f"Created Notion task: {title} → {page.get('url', '')}")
+                    return task
+                else:
+                    logger.error(f"Notion create_task failed: {resp.status_code} {resp.text[:300]}")
+                    return None
+        except Exception as e:
+            logger.error(f"Notion create_task error: {e}")
+            return None
+
     # --- Report Publishing ---
 
     @staticmethod
