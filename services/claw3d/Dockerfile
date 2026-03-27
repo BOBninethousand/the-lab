@@ -61,7 +61,31 @@ RUN sed -i \
   sed -i \
     -e 's/Welcome to Claw3D/Welcome to The Lab/g' \
     -e 's/Your AI office in 3D/Your AI operations hub/g' \
+    -e 's/Link to your OpenClaw instance/Auto-connected via Docker/g' \
     src/features/onboarding/types.ts
+
+# 8. Rebrand onboarding steps 2-5 for The Lab
+RUN sed -i \
+    -e 's/OpenClaw installed/The Lab Backend/g' \
+    -e 's/Install via npm, pnpm, or from source/FastAPI running on port 8000/g' \
+    -e 's/Gateway running/Agent Bus/g' \
+    -e 's/Start with: openclaw gateway start/Hub and gateway auto-connected/g' \
+    -e 's/openclaw gateway start/docker-compose up/g' \
+    -e 's/Gateway URL and token/Bridge Service/g' \
+    -e "s|Found in ~/.openclaw/openclaw.json or your remote setup|Syncing events to 3D Office|g" \
+    -e 's/Node.js 20+/3D Office/g' \
+    -e 's/Required for running Claw3D locally/Rendering the AI workspace/g' \
+    -e "s/Make sure you have these ready before connecting. If you already have OpenClaw running, you can skip this step./All services run automatically in Docker. No manual setup needed./" \
+    -e 's/docs.openclaw.ai/docker-compose/g' \
+    -e 's/join Discord/auto-deploy/g' \
+    -e "s/Need help? Check /All services managed by /g" \
+    src/features/onboarding/components/PrerequisitesStep.tsx && \
+  sed -i \
+    -e 's/Claw3D fleet sidebar/the Office sidebar/g' \
+    src/features/onboarding/components/AgentsStep.tsx && \
+  sed -i \
+    -e 's/re-run onboarding from Studio settings/re-run onboarding from Office settings/g' \
+    src/features/onboarding/components/CompleteStep.tsx
 
 # --- Build ---
 
