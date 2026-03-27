@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Brain, BookOpen, ShieldCheck, Trash2, X, ChevronDown, Lightbulb, GraduationCap, Heart, Database, AlertTriangle, Upload } from 'lucide-react'
+import { Plus, Search, Brain, BookOpen, ShieldCheck, Trash2, X, ChevronDown, Lightbulb, GraduationCap, Heart, Database, AlertTriangle, Upload, FolderOpen, FileText, Check } from 'lucide-react'
 import {
   getKnowledge, createKnowledge, searchKnowledge, deleteKnowledge,
   getAgentMemories, searchAgentMemories, deleteAgentMemory,
   getCorrections, getCorrectionRules, createCorrection,
   getMemoryStats, getAgents, bulkImportKnowledge,
+  scanDirectory, importKnowledgeFiles,
 } from '../lib/api'
 import { formatDate } from '../lib/time'
 
@@ -64,6 +65,14 @@ export function Memory() {
   // Import state
   const [isImporting, setIsImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
+
+  // Directory import state
+  const [dirPath, setDirPath] = useState('')
+  const [scannedFiles, setScannedFiles] = useState([])
+  const [selectedFiles, setSelectedFiles] = useState(new Set())
+  const [isScanningDir, setIsScanningDir] = useState(false)
+  const [isImportingDir, setIsImportingDir] = useState(false)
+  const [dirImportResult, setDirImportResult] = useState(null)
 
   // Form state
   const [form, setForm] = useState({ title: '', content: '', tags: '', category: 'fact' })
@@ -239,7 +248,58 @@ export function Memory() {
     { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
     { id: 'agent', label: 'Agent Memories', icon: Brain },
     { id: 'corrections', label: 'Corrections & Rules', icon: ShieldCheck },
+    { id: 'import', label: 'Import', icon: FolderOpen },
   ]
+
+  const handleScanDirectory = async () => {
+    if (!dirPath.trim()) return
+    setIsScanningDir(true)
+    setDirImportResult(null)
+    setScannedFiles([])
+    setSelectedFiles(new Set())
+    try {
+      const result = await scanDirectory(dirPath.trim())
+      setScannedFiles(result.files || [])
+      setSelectedFiles(new Set((result.files || []).map(f => f.path)))
+    } catch (err) {
+      setDirImportResult({ error: err.message || 'Failed to scan directory' })
+    } finally {
+      setIsScanningDir(false)
+    }
+  }
+
+  const toggleFileSelection = (path) => {
+    setSelectedFiles(prev => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  const handleDirectoryImport = async () => {
+    if (selectedFiles.size === 0) return
+    setIsImportingDir(true)
+    setDirImportResult(null)
+    try {
+      const entries = scannedFiles
+        .filter(f => selectedFiles.has(f.path))
+        .map(f => ({
+          title: f.filename.replace('.md', '').replace(/[-_]/g, ' '),
+          file_path: f.path,
+          tags: ['cowork', 'import'],
+          category: 'reference',
+        }))
+      const result = await importKnowledgeFiles(entries)
+      setDirImportResult(result)
+      loadKnowledge()
+      loadStats()
+    } catch (err) {
+      setDirImportResult({ error: err.message || 'Failed to import files' })
+    } finally {
+      setIsImportingDir(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -605,6 +665,147 @@ export function Memory() {
             <ModalActions onCancel={() => setShowAddCorrection(false)} submitLabel="Log Correction" />
           </form>
         </Modal>
+      )}
+
+      {/* Import Tab */}
+      {activeTab === 'import' && (
+        <div className="space-y-6">
+          {/* Directory Scanner */}
+          <div className="card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <FolderOpen size={16} className="text-lab-accent" />
+              <h3 className="text-sm font-semibold text-lab-text-primary">Import from Directory</h3>
+            </div>
+            <p className="text-xs text-lab-text-muted mb-4">
+              Point to a folder of .md files (e.g. co-work exports) and import them into the knowledge base.
+            </p>
+
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={dirPath}
+                onChange={e => setDirPath(e.target.value)}
+                placeholder="/path/to/cowork/exports"
+                className="flex-1 bg-lab-elevated border border-lab-border rounded-md px-3 py-2 text-sm text-lab-text-primary placeholder:text-lab-text-faint focus:outline-none focus:border-lab-accent"
+                onKeyDown={e => e.key === 'Enter' && handleScanDirectory()}
+              />
+              <button
+                onClick={handleScanDirectory}
+                disabled={isScanningDir || !dirPath.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md bg-lab-accent/20 text-lab-accent hover:bg-lab-accent/30 transition-subtle disabled:opacity-40"
+              >
+                <Search size={14} />
+                {isScanningDir ? 'Scanning...' : 'Scan'}
+              </button>
+            </div>
+
+            {/* Scanned files list */}
+            {scannedFiles.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-lab-text-secondary">
+                    Found {scannedFiles.length} .md files — {selectedFiles.size} selected
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedFiles(new Set(scannedFiles.map(f => f.path)))}
+                      className="text-[10px] text-lab-text-muted hover:text-lab-text-secondary transition-subtle"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      onClick={() => setSelectedFiles(new Set())}
+                      className="text-[10px] text-lab-text-muted hover:text-lab-text-secondary transition-subtle"
+                    >
+                      Deselect all
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto space-y-1 border border-lab-border rounded-lg p-2">
+                  {scannedFiles.map(file => (
+                    <button
+                      key={file.path}
+                      onClick={() => toggleFileSelection(file.path)}
+                      className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md transition-subtle ${
+                        selectedFiles.has(file.path)
+                          ? 'bg-lab-accent/5 border border-lab-accent/30'
+                          : 'hover:bg-white/[0.02] border border-transparent'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border ${
+                        selectedFiles.has(file.path)
+                          ? 'bg-lab-accent border-lab-accent'
+                          : 'border-lab-border'
+                      }`}>
+                        {selectedFiles.has(file.path) && <Check size={10} className="text-white" />}
+                      </div>
+                      <FileText size={14} className="text-lab-text-muted flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-lab-text-primary truncate">{file.filename}</div>
+                        <div className="text-[10px] text-lab-text-muted truncate">{file.preview?.slice(0, 80)}</div>
+                      </div>
+                      <span className="text-[10px] text-lab-text-faint flex-shrink-0">
+                        {(file.size_bytes / 1024).toFixed(1)} KB
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleDirectoryImport}
+                  disabled={isImportingDir || selectedFiles.size === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md bg-lab-accent text-white hover:bg-lab-accent/90 transition-subtle disabled:opacity-40"
+                >
+                  <Upload size={14} />
+                  {isImportingDir ? 'Importing...' : `Import ${selectedFiles.size} files`}
+                </button>
+              </div>
+            )}
+
+            {/* Import result */}
+            {dirImportResult && (
+              <div className={`mt-4 p-3 rounded-lg border text-xs ${
+                dirImportResult.error
+                  ? 'border-red-500/30 bg-red-500/5 text-red-400'
+                  : 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
+              }`}>
+                {dirImportResult.error
+                  ? dirImportResult.error
+                  : `Imported ${dirImportResult.created || 0} files. Skipped: ${dirImportResult.skipped || 0}. Errors: ${dirImportResult.errors || 0}.`
+                }
+              </div>
+            )}
+          </div>
+
+          {/* JSON Import */}
+          <div className="card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Upload size={16} className="text-lab-text-muted" />
+              <h3 className="text-sm font-semibold text-lab-text-primary">Import JSON</h3>
+            </div>
+            <p className="text-xs text-lab-text-muted mb-4">
+              Upload a JSON array of knowledge entries.
+            </p>
+            <label className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md border border-lab-border text-lab-text-secondary hover:bg-white/[0.03] transition-subtle cursor-pointer w-fit">
+              <Upload size={14} />
+              Choose JSON File
+              <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+            </label>
+            {importResult && (
+              <div className={`mt-3 p-3 rounded-lg border text-xs ${
+                importResult.error
+                  ? 'border-red-500/30 bg-red-500/5 text-red-400'
+                  : 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
+              }`}>
+                {importResult.error
+                  ? importResult.error
+                  : `Created: ${importResult.created || 0}, Skipped: ${importResult.skipped || 0}, Errors: ${importResult.errors || 0}`
+                }
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

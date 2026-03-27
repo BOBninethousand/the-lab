@@ -22,6 +22,7 @@ class Settings:
     DATA_DIR: str = os.getenv("DATA_DIR", "./data")
     NOTION_API_KEY: str = os.getenv("NOTION_API_KEY", "")
     NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
+    IMPORT_ALLOWED_DIRS: str = os.getenv("IMPORT_ALLOWED_DIRS", "")  # comma-separated allowed base directories for file import
 
 
 settings = Settings()

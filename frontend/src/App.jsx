@@ -10,6 +10,7 @@ import { Teams } from './pages/Teams'
 import { Costs } from './pages/Costs'
 import { OpenClaw } from './pages/OpenClaw'
 import { Settings } from './pages/Settings'
+import { Strategy } from './pages/Strategy'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/strategy" element={<Strategy />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/office" element={<Office />} />
           <Route path="/calendar" element={<Calendar />} />

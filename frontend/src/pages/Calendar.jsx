@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Play, Trash2, ChevronDown, Star, Clock, CheckCircle, XCircle, AlertTriangle, X } from 'lucide-react'
 import { AvatarCircle } from '../components/AvatarCircle'
+import { ScheduleWizard } from '../components/calendar/ScheduleWizard'
 import {
   getSchedule, getAgents, createScheduleSimple, runSchedule, updateSchedule, deleteSchedule,
   getJobExecutions, submitJobFeedback, previewCron,
@@ -40,6 +41,7 @@ export function Calendar() {
   const [feedbackExec, setFeedbackExec] = useState(null)
   const [feedbackRating, setFeedbackRating] = useState(0)
   const [feedbackText, setFeedbackText] = useState('')
+  const [showWizard, setShowWizard] = useState(false)
 
   // Schedule builder form
   const [form, setForm] = useState({
@@ -150,7 +152,7 @@ export function Calendar() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-section-label">Scheduled Jobs</h2>
           <button
-            onClick={() => setShowAddForm(true)}
+            onClick={() => setShowWizard(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-lab-border-hover rounded-md text-xs text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
           >
             <Plus size={14} /> Add Job
@@ -438,6 +440,15 @@ export function Calendar() {
           </div>
         )}
       </div>
+
+      {/* Schedule Wizard Modal */}
+      {showWizard && (
+        <ScheduleWizard
+          agents={agents}
+          onClose={() => setShowWizard(false)}
+          onCreated={() => loadData()}
+        />
+      )}
     </div>
   )
 }

@@ -3,11 +3,11 @@ import { StatCard } from '../components/StatCard'
 import { AgentRow } from '../components/AgentRow'
 import { ActivityList } from '../components/ActivityList'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { getAgents, getSchedule, getCrews, getTasks, getReports, getReportStats, getNotionStatus } from '../lib/api'
+import { getAgents, getSchedule, getCrews, getTasks, getReports, getReportStats, getNotionStatus, getValueMetrics, getStrategies } from '../lib/api'
 import { formatDistanceToNow } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { Link, useNavigate } from 'react-router-dom'
-import { Clock, FileText, Zap, Bot, ExternalLink } from 'lucide-react'
+import { Clock, FileText, Zap, Bot, ExternalLink, Target, Brain, ShieldCheck } from 'lucide-react'
 
 const AGENT_COLORS = {
   Scout: '#3b6fcc',
@@ -67,6 +67,8 @@ export function Dashboard() {
   const [activity, setActivity] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [notionStatus, setNotionStatus] = useState(null)
+  const [valueMetrics, setValueMetrics] = useState(null)
+  const [strategies, setStrategies] = useState([])
   const { events, isConnected } = useWebSocket()
   const navigate = useNavigate()
 
@@ -74,13 +76,16 @@ export function Dashboard() {
     const loadData = async () => {
       setIsLoading(true)
       try {
-        const [agentsData, scheduleData, crewsData, tasksData, reportsData, rStatsData] = await Promise.all([
+        const [agentsData, scheduleData, crewsData, tasksData, reportsData, rStatsData, nStatus, vMetrics, stratData] = await Promise.all([
           getAgents().catch(() => []),
           getSchedule().catch(() => []),
           getCrews().catch(() => []),
           getTasks().catch(() => []),
           getReports({ limit: 4 }).catch(() => []),
           getReportStats().catch(() => null),
+          getNotionStatus().catch(() => null),
+          getValueMetrics().catch(() => null),
+          getStrategies().catch(() => []),
         ])
 
         setAgents(Array.isArray(agentsData) ? agentsData : (agentsData.agents || []))
@@ -89,10 +94,9 @@ export function Dashboard() {
         setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks || []))
         setLatestReports(Array.isArray(reportsData) ? reportsData : [])
         if (rStatsData) setReportStats(rStatsData)
-
-        // Load Notion status
-        const nStatus = await getNotionStatus().catch(() => null)
         if (nStatus) setNotionStatus(nStatus)
+        if (vMetrics) setValueMetrics(vMetrics)
+        setStrategies(Array.isArray(stratData) ? stratData : [])
       } catch (err) {
         console.error('Failed to load dashboard data:', err)
       } finally {
@@ -172,6 +176,95 @@ export function Dashboard() {
               )
             })()
           )}
+        </div>
+      )}
+
+      {/* Active Strategies */}
+      {strategies.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-section-label">Active Strategies</h2>
+            <Link
+              to="/strategy"
+              className="text-xs text-lab-text-muted hover:text-lab-text-secondary transition-subtle"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {strategies.filter(s => s.status === 'active').slice(0, 3).map(strategy => (
+              <Link
+                key={strategy.id}
+                to="/strategy"
+                className="card p-3 hover:bg-white/[0.02] transition-subtle"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Target size={14} className="text-lab-accent" />
+                  <span className="text-xs font-medium text-lab-text-primary truncate">{strategy.title}</span>
+                </div>
+                {strategy.problem && (
+                  <p className="text-[10px] text-lab-text-muted line-clamp-2 mb-2">{strategy.problem}</p>
+                )}
+                <div className="flex items-center gap-1.5">
+                  {(strategy.agent_ids || []).slice(0, 3).map((aid, i) => {
+                    const agent = agents.find(a => a.id === aid)
+                    return agent ? (
+                      <AvatarCircle key={i} name={agent.name} agent={agent.name} size={16} />
+                    ) : null
+                  })}
+                  <span className="text-[10px] text-lab-text-faint ml-1">
+                    {(strategy.agent_ids || []).length} agents
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Value Metrics */}
+      {valueMetrics && (
+        <div>
+          <div className="mb-4">
+            <h2 className="text-section-label">Agent Value</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <FileText size={12} className="text-lab-text-muted" />
+                <span className="text-[10px] text-lab-text-muted">Reports</span>
+              </div>
+              <div className="text-lg font-semibold text-lab-text-primary">{valueMetrics.total_reports}</div>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Brain size={12} className="text-lab-text-muted" />
+                <span className="text-[10px] text-lab-text-muted">Memories</span>
+              </div>
+              <div className="text-lg font-semibold text-lab-text-primary">{valueMetrics.agent_memories}</div>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ShieldCheck size={12} className="text-lab-text-muted" />
+                <span className="text-[10px] text-lab-text-muted">Auto Rules</span>
+              </div>
+              <div className="text-lg font-semibold text-emerald-400">{valueMetrics.auto_rules}</div>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Target size={12} className="text-lab-text-muted" />
+                <span className="text-[10px] text-lab-text-muted">Strategies</span>
+              </div>
+              <div className="text-lg font-semibold text-lab-text-primary">{valueMetrics.strategies_count}</div>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Zap size={12} className="text-lab-text-muted" />
+                <span className="text-[10px] text-lab-text-muted">30d Cost</span>
+              </div>
+              <div className="text-lg font-semibold text-lab-text-primary">${typeof valueMetrics.total_cost_30d === 'number' ? valueMetrics.total_cost_30d.toFixed(2) : '0.00'}</div>
+            </div>
+          </div>
         </div>
       )}
 

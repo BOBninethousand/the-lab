@@ -2,6 +2,7 @@ import React from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard,
+  Target,
   Users,
   Building2,
   CalendarDays,
@@ -18,6 +19,7 @@ import { useWebSocket } from '../hooks/useWebSocket'
 
 const navItems = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { label: 'Strategy', icon: Target, path: '/strategy' },
   { label: 'Agents', icon: Users, path: '/agents' },
   { label: 'Office', icon: Building2, path: '/office' },
   { label: 'Calendar', icon: CalendarDays, path: '/calendar' },
@@ -34,6 +36,7 @@ const bottomNavItems = [
 
 const pageNames = {
   '/': 'Dashboard',
+  '/strategy': 'Strategy',
   '/agents': 'Agents',
   '/office': 'Office',
   '/calendar': 'Calendar',

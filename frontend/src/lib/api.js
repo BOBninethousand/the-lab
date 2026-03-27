@@ -307,3 +307,46 @@ export async function syncNotionKnowledge(pageId) {
     method: 'POST', body: JSON.stringify({ page_id: pageId })
   })
 }
+
+// Strategies
+export async function getStrategies() {
+  return api('/api/strategies')
+}
+
+export async function createStrategy(data) {
+  return api('/api/strategies', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getStrategy(id) {
+  return api(`/api/strategies/${id}`)
+}
+
+export async function updateStrategy(id, data) {
+  return api(`/api/strategies/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteStrategy(id) {
+  return api(`/api/strategies/${id}`, { method: 'DELETE' })
+}
+
+export async function getStrategyProgress(id) {
+  return api(`/api/strategies/${id}/progress`)
+}
+
+// Value Metrics
+export async function getValueMetrics() {
+  return api('/api/dashboard/value-metrics')
+}
+
+// Directory scanning (for co-work import)
+export async function scanDirectory(directory) {
+  return api('/api/knowledge/scan-directory', {
+    method: 'POST', body: JSON.stringify({ directory })
+  })
+}
+
+export async function importKnowledgeFiles(entries) {
+  return api('/api/knowledge/import-files', {
+    method: 'POST', body: JSON.stringify(entries)
+  })
+}
