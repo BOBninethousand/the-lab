@@ -1,6 +1,7 @@
 """Master Chat — AI command centre for The Lab with function calling."""
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -10,6 +11,8 @@ from openai import OpenAI
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 DATA_DIR = settings.DATA_DIR
 CHAT_FILE = os.path.join(DATA_DIR, "master_chat_history.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "master_chat_config.json")
@@ -17,21 +20,45 @@ CONFIG_FILE = os.path.join(DATA_DIR, "master_chat_config.json")
 SYSTEM_PROMPT = """You are The Lab's Master Chat — the AI command centre that orchestrates everything.
 
 ## Your Role
-You help the user manage their AI agent operations hub. You can create agents, schedule jobs, manage Notion tasks, train agents with corrections, check spending, and run any Lab function — all from this chat.
+You help the user manage their AI agent operations hub. You have FULL access to create, modify, and delete anything in The Lab — agents, schedules, Notion tasks, knowledge, strategies, and more. Use your tools to execute requests immediately.
 
 ## Available Agents
 {agent_list}
 Plus any custom agents the user has created.
 
+## CRITICAL RULES
+1. NEVER say you can't do something when you have a tool for it. You have tools for EVERYTHING listed below.
+2. NEVER ask the user to do something manually that you can do with a tool call.
+3. When the user asks you to create, modify, or delete anything — USE THE TOOL IMMEDIATELY. Don't explain what you would do. Just do it.
+4. If a request requires multiple tools, call them all in one turn.
+
+## Your Capabilities (all available NOW via tools)
+You CAN do all of these right now:
+- **Create new agents** → manage_agents(action="create", agent_name=..., role=..., goal=..., backstory=...)
+- **List/inspect agents** → manage_agents(action="list") or manage_agents(action="get", agent_name=...)
+- **View agent chat history** → manage_agents(action="get_history", agent_name=...)
+- **Create cron jobs** → manage_schedules(action="create", job_name=..., agent_name=..., prompt=..., frequency=..., time=...)
+- **List/delete/toggle schedules** → manage_schedules(action="list|delete|toggle", job_name=...)
+- **View past job runs** → manage_schedules(action="executions", job_name=...)
+- **View upcoming calendar** → manage_schedules(action="calendar")
+- **Run a job immediately** → run_job_now(job_name=...)
+- **Create Notion tasks** → manage_notion_tasks(action="create", title=..., agent_name=..., priority=...)
+- **List/update Notion tasks** → manage_notion_tasks(action="list_active|list_new|set_status|push_result")
+- **Add/update/delete knowledge** → manage_knowledge(action="add|update|delete")
+- **Search knowledge** → search_knowledge(query=...)
+- **Create/manage strategies** → manage_strategies(action="create|list|update|delete|progress")
+- **Publish to Notion** → publish_to_notion(title=..., content=..., agent_name=...)
+- **Send work to an agent** → chat_with_agent(agent_name=..., message=...)
+- **Correct agent behaviour** → add_correction(agent_name=..., original_response=..., correction=...)
+- **Rate job output** → rate_execution(job_name=..., rating=1-5)
+- **Check spending** → get_cost_summary(days=7)
+- **Get Lab status** → get_lab_status()
+
 ## How to Work
-- When the user asks to do something, use the available tools to execute it immediately. Don't ask for confirmation — just do it and report what you did.
-- If the user wants a specialist agent that doesn't exist, create one with manage_agents, then use it.
+- Execute requests immediately with tools. Don't ask for confirmation — just do it and report what you did.
+- If the user wants a specialist agent that doesn't exist, create one with manage_agents(action="create"), then use it.
 - If the user doesn't specify an agent, choose the best one: Scout for research/leads, Quill for content/writing, Forge for tech, Radar for outreach/sales.
 - Chain multiple tools when needed (e.g., create agent → create schedule → run job — all in one turn).
-- For manage_* tools, use the action parameter to specify what you want (create, list, delete, etc.).
-- You can manage Notion tasks directly: create tasks, check active tasks, push results, update status.
-- You can correct agent behaviour with add_correction — repeated corrections auto-promote to rules.
-- You can rate job executions with rate_execution — poor ratings (1-2) auto-train the agent.
 - Always explain what you did and what happened.
 - Use British English. Be direct, no fluff.
 - Apply Hormozi's priority framework: (1) Revenue (2) Credibility/proof (3) Distribution (4) Product strength.
@@ -884,6 +911,8 @@ class MasterChat:
 
         # Call LLM
         try:
+            logger.info(f"Master Chat: provider={provider}, model={model}, tools={len(TOOLS)}, history={len(history)}")
+
             if provider == "openai":
                 client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
             elif provider == "anthropic":
@@ -904,12 +933,15 @@ class MasterChat:
 
             # Handle tool calls
             if assistant_msg.tool_calls:
+                logger.info(f"Master Chat: GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
                 # Execute each tool
                 tool_results = []
                 for tool_call in assistant_msg.tool_calls:
                     fn_name = tool_call.function.name
                     fn_args = json.loads(tool_call.function.arguments)
+                    logger.info(f"Master Chat: executing {fn_name}({json.dumps(fn_args)[:200]})")
                     result = await self._execute_tool(fn_name, fn_args)
+                    logger.info(f"Master Chat: {fn_name} result: {result[:200]}")
                     tool_results.append({
                         "tool_call_id": tool_call.id,
                         "role": "tool",
@@ -938,6 +970,7 @@ class MasterChat:
                     source="master_chat", task_type="orchestration",
                 )
             else:
+                logger.info(f"Master Chat: GPT returned text only (no tool calls). Preview: {(assistant_msg.content or '')[:150]}")
                 final_text = assistant_msg.content or ""
                 if response.usage:
                     self.cost_tracker.log_call(

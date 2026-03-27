@@ -1373,6 +1373,22 @@ async def update_master_chat_config(data: MasterChatConfig):
     return config
 
 
+@app.get("/api/master-chat/tools")
+async def master_chat_tools():
+    """Debug endpoint: shows all tools available to Master Chat."""
+    from app.master_chat import TOOLS
+    return {
+        "tool_count": len(TOOLS),
+        "tools": [
+            {
+                "name": t["function"]["name"],
+                "actions": t["function"]["parameters"].get("properties", {}).get("action", {}).get("enum", []),
+            }
+            for t in TOOLS
+        ],
+    }
+
+
 # --- STRATEGY ENDPOINTS ---
 
 @app.get("/api/strategies")
