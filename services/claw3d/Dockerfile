@@ -55,7 +55,13 @@ RUN sed -i \
   sed -i \
     -e 's/your OpenClaw agents/your AI agents/g' \
     -e 's/your OpenClaw gateway/your agent gateway/g' \
-    src/features/onboarding/components/WelcomeStep.tsx
+    -e 's/Claw3D turns your AI automation/The Lab turns your AI automation/g' \
+    -e "s/This wizard will help you connect to your agent gateway and get started in about two minutes\./Explore the 3D office where your agents work, collaborate, and execute tasks./" \
+    src/features/onboarding/components/WelcomeStep.tsx && \
+  sed -i \
+    -e 's/Welcome to Claw3D/Welcome to The Lab/g' \
+    -e 's/Your AI office in 3D/Your AI operations hub/g' \
+    src/features/onboarding/types.ts
 
 # --- Build ---
 
