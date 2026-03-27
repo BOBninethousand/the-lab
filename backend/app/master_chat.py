@@ -922,11 +922,23 @@ class MasterChat:
             else:
                 client = OpenAI(api_key="ollama", base_url=settings.OLLAMA_BASE_URL + "/v1")
 
+            # Detect action-oriented messages and force tool usage
+            action_keywords = [
+                "create", "make", "add", "set up", "schedule", "delete", "remove",
+                "run", "execute", "list", "show", "check", "find", "search",
+                "publish", "correct", "rate", "update", "toggle", "pause", "resume",
+                "status", "how much", "spending", "cost", "star", "unstar",
+            ]
+            msg_lower = user_message.lower()
+            is_action = any(kw in msg_lower for kw in action_keywords)
+            tool_mode = "required" if is_action else "auto"
+            logger.info(f"Master Chat: tool_choice={tool_mode} (action_detected={is_action})")
+
             response = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 tools=TOOLS,
-                tool_choice="auto",
+                tool_choice=tool_mode,
             )
 
             assistant_msg = response.choices[0].message

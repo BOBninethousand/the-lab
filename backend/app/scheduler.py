@@ -57,10 +57,11 @@ def cron_to_human(cron_expression: str) -> str:
 
 
 class SchedulerManager:
-    def __init__(self, agent_manager, document_manager, ws_manager):
+    def __init__(self, agent_manager, document_manager, ws_manager, report_manager=None):
         self.agent_manager = agent_manager
         self.document_manager = document_manager
         self.ws_manager = ws_manager
+        self.report_manager = report_manager
         self.correction_manager = None  # Set from main.py after init
         self.notion_bridge = None  # Set from main.py after init
         self.scheduler = AsyncIOScheduler()
@@ -411,7 +412,7 @@ class SchedulerManager:
             if response.startswith("Error:") or response.startswith("Configuration Error:"):
                 raise RuntimeError(response)
 
-            from app.models import DocumentCreate
+            from app.models import DocumentCreate, ReportCreate
             doc = self.document_manager.create_document(
                 DocumentCreate(
                     title=f"{job_config['name']} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
@@ -420,6 +421,19 @@ class SchedulerManager:
                     agent_id=agent_id,
                 )
             )
+            # Also create a Report so it appears in the Documents tab
+            if self.report_manager:
+                try:
+                    self.report_manager.create_report(ReportCreate(
+                        title=f"{job_config['name']} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                        content=response,
+                        report_type="scheduled",
+                        agent_id=agent_id,
+                        agent_name=agent.name,
+                        source="scheduled",
+                    ))
+                except Exception:
+                    pass
 
             execution = JobExecution(
                 id=str(uuid.uuid4()),

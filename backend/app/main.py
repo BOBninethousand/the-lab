@@ -1,9 +1,13 @@
 import asyncio
 import json
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Request
+
+# Ensure INFO-level logging so Master Chat diagnostics are visible
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -55,7 +59,7 @@ agent_manager.cost_tracker = cost_tracker
 memory_manager = MemoryManager()
 document_manager = DocumentManager()
 report_manager = ReportManager()
-scheduler_manager = SchedulerManager(agent_manager, document_manager, ws_manager)
+scheduler_manager = SchedulerManager(agent_manager, document_manager, ws_manager, report_manager=report_manager)
 crew_manager = CrewManager(agent_manager, ws_manager)
 openclaw_bridge = OpenClawBridge(ws_manager=ws_manager, cost_tracker=cost_tracker)
 agent_manager.openclaw_bridge = openclaw_bridge

@@ -82,6 +82,9 @@ export function OfficeCss() {
             : prev
         )
       }
+      if (lastEvent.type === 'agent_created' || lastEvent.type === 'agent_deleted') {
+        loadAgents()
+      }
     }
   }, [events])
 
