@@ -26,9 +26,10 @@ You help the user manage their AI agent operations hub. You can create strategie
 - **Radar** — Business Development Rep. Outreach, lead qualification, partnership opportunities.
 
 ## How to Work
-- When the user asks to do something, use the available tools to execute it.
+- When the user asks to do something, use the available tools to execute it immediately. Don't ask for confirmation — just do it and report what you did.
+- If the user wants a specialist agent that doesn't exist, create one with create_agent, then use it.
 - If the user doesn't specify an agent, choose the best one: Scout for research/leads, Quill for content/writing, Forge for tech, Radar for outreach/sales.
-- Chain multiple tools when needed (e.g., create strategy → create schedule → run job).
+- Chain multiple tools when needed (e.g., create_agent → create_schedule → run job — all in one turn).
 - You can call multiple tools in one turn to handle complex requests.
 - Always explain what you did and what happened.
 - Use British English. Be direct, no fluff.
@@ -150,6 +151,23 @@ TOOLS = [
                     "category": {"type": "string", "enum": ["rule", "fact", "reference", "preference"], "description": "Category"},
                 },
                 "required": ["title", "content", "category"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_agent",
+            "description": "Create a new AI agent with a custom role, goal, and backstory. Use when the user wants a specialist agent that doesn't exist yet (beyond Scout, Quill, Forge, Radar).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Agent name (e.g. 'Pulse', 'Apex')"},
+                    "role": {"type": "string", "description": "Job title (e.g. 'Social Media Manager')"},
+                    "goal": {"type": "string", "description": "What this agent aims to achieve"},
+                    "backstory": {"type": "string", "description": "Agent's background and expertise context"},
+                },
+                "required": ["name", "role", "goal", "backstory"],
             },
         },
     },
@@ -314,6 +332,21 @@ class MasterChat:
                 if not results:
                     return "No knowledge entries found for that query."
                 return json.dumps([{"title": r.get("title", ""), "content": r.get("content", "")[:200]} for r in results], indent=2)
+
+            elif tool_name == "create_agent":
+                from app.models import AgentCreate
+                agent_data = AgentCreate(
+                    name=args["name"],
+                    role=args["role"],
+                    goal=args["goal"],
+                    backstory=args["backstory"],
+                    provider="openai",
+                    model_name="gpt-5.4",
+                )
+                new_agent = self.agent_manager.create_agent(agent_data)
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("agent_created", new_agent.model_dump(mode="json"))
+                return f"Agent created: **{new_agent.name}** — {new_agent.role}. ID: {new_agent.id}"
 
             elif tool_name == "chat_with_agent":
                 agent = self._resolve_agent(args["agent_name"])
