@@ -72,45 +72,48 @@ export function Dashboard() {
   const { events, isConnected } = useWebSocket()
   const navigate = useNavigate()
 
-  useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true)
-      try {
-        const [agentsData, scheduleData, crewsData, tasksData, reportsData, rStatsData, nStatus, vMetrics, stratData] = await Promise.all([
-          getAgents().catch(() => []),
-          getSchedule().catch(() => []),
-          getCrews().catch(() => []),
-          getTasks().catch(() => []),
-          getReports({ limit: 4 }).catch(() => []),
-          getReportStats().catch(() => null),
-          getNotionStatus().catch(() => null),
-          getValueMetrics().catch(() => null),
-          getStrategies().catch(() => []),
-        ])
+  const loadData = async () => {
+    setIsLoading(true)
+    try {
+      const [agentsData, scheduleData, crewsData, tasksData, reportsData, rStatsData, nStatus, vMetrics, stratData] = await Promise.all([
+        getAgents().catch(() => []),
+        getSchedule().catch(() => []),
+        getCrews().catch(() => []),
+        getTasks().catch(() => []),
+        getReports({ limit: 4 }).catch(() => []),
+        getReportStats().catch(() => null),
+        getNotionStatus().catch(() => null),
+        getValueMetrics().catch(() => null),
+        getStrategies().catch(() => []),
+      ])
 
-        setAgents(Array.isArray(agentsData) ? agentsData : (agentsData.agents || []))
-        setSchedule(Array.isArray(scheduleData) ? scheduleData : (scheduleData.schedule || []))
-        setCrews(Array.isArray(crewsData) ? crewsData : (crewsData.crews || []))
-        setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks || []))
-        setLatestReports(Array.isArray(reportsData) ? reportsData : [])
-        if (rStatsData) setReportStats(rStatsData)
-        if (nStatus) setNotionStatus(nStatus)
-        if (vMetrics) setValueMetrics(vMetrics)
-        setStrategies(Array.isArray(stratData) ? stratData : [])
-      } catch (err) {
-        console.error('Failed to load dashboard data:', err)
-      } finally {
-        setIsLoading(false)
-      }
+      setAgents(Array.isArray(agentsData) ? agentsData : (agentsData.agents || []))
+      setSchedule(Array.isArray(scheduleData) ? scheduleData : (scheduleData.schedule || []))
+      setCrews(Array.isArray(crewsData) ? crewsData : (crewsData.crews || []))
+      setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks || []))
+      setLatestReports(Array.isArray(reportsData) ? reportsData : [])
+      if (rStatsData) setReportStats(rStatsData)
+      if (nStatus) setNotionStatus(nStatus)
+      if (vMetrics) setValueMetrics(vMetrics)
+      setStrategies(Array.isArray(stratData) ? stratData : [])
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err)
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
-  // Update activity when WebSocket events arrive
+  // Re-fetch when data-changing events arrive via WebSocket
   useEffect(() => {
     if (events.length > 0) {
+      const latest = events[0]
       setActivity(events)
+      const refreshTypes = ['agent_created', 'agent_deleted', 'report_created', 'schedule_changed', 'strategy_changed', 'task_completed']
+      if (refreshTypes.includes(latest.type)) {
+        loadData()
+      }
     }
   }, [events])
 

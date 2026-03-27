@@ -117,17 +117,58 @@ class StrategyManager:
         # Count job executions for all discovered schedules
         total_executions = 0
         successful_executions = 0
+        all_execs = []
         for job_id in all_schedule_ids:
             execs = scheduler_manager.get_executions(job_id, limit=100)
             total_executions += len(execs)
             successful_executions += sum(1 for e in execs if e.status == "success")
+            all_execs.extend(execs)
+
+        # Sort all executions by time, keep recent 5
+        all_execs.sort(key=lambda e: e.executed_at, reverse=True)
+        recent_executions = [
+            {
+                "id": e.id,
+                "job_name": e.job_name,
+                "agent_name": e.agent_name,
+                "executed_at": e.executed_at.isoformat() if hasattr(e.executed_at, 'isoformat') else str(e.executed_at),
+                "status": e.status,
+                "result_preview": e.result_preview,
+                "result_document_id": e.result_document_id,
+                "error": e.error,
+            }
+            for e in all_execs[:5]
+        ]
+
+        # Last execution timestamp
+        last_execution_at = recent_executions[0]["executed_at"] if recent_executions else None
+
+        # Success rate over last 7 days
+        week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        execs_7d = [e for e in all_execs if (e.executed_at.isoformat() if hasattr(e.executed_at, 'isoformat') else str(e.executed_at)) >= week_ago]
+        success_rate_7d = round(sum(1 for e in execs_7d if e.status == "success") / len(execs_7d) * 100) if execs_7d else None
 
         # Reports this week
-        week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
         reports_this_week = sum(
             1 for r in agent_reports
             if str(r.created_at) >= week_ago
         )
+
+        # Recent reports (last 3)
+        sorted_reports = sorted(agent_reports, key=lambda r: str(r.created_at), reverse=True)
+        recent_reports = [
+            {
+                "id": r.id,
+                "title": r.title,
+                "agent_name": r.agent_name,
+                "created_at": r.created_at.isoformat() if hasattr(r.created_at, 'isoformat') else str(r.created_at),
+                "report_type": r.report_type,
+            }
+            for r in sorted_reports[:3]
+        ]
+
+        # Cost for strategy agents over 7 days
+        total_cost_7d = cost_tracker.get_cost_for_agents(agent_ids, days=7)
 
         return {
             "strategy_id": sid,
@@ -138,4 +179,9 @@ class StrategyManager:
             "agent_count": len(agent_ids),
             "schedule_count": len(all_schedule_ids),
             "schedules": detected_schedules,
+            "recent_executions": recent_executions,
+            "recent_reports": recent_reports,
+            "last_execution_at": last_execution_at,
+            "success_rate_7d": success_rate_7d,
+            "total_cost_7d": total_cost_7d,
         }

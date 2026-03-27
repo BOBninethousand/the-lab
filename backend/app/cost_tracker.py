@@ -208,3 +208,9 @@ class CostTracker:
             "total_calls": total_calls,
             "agents": sorted(agents, key=lambda x: -x["cost_usd"]),
         }
+
+    def get_cost_for_agents(self, agent_ids: set, days: int = 7) -> float:
+        """Sum cost for specific agents over N days."""
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        log = self._load_log()
+        return round(sum(e["cost_usd"] for e in log if e.get("agent_id") in agent_ids and e["timestamp"] >= cutoff), 4)

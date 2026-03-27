@@ -130,7 +130,8 @@ class ReportManager:
 
         # Apply filters
         if agent_name:
-            reports = [r for r in reports if r.agent_name.lower() == agent_name.lower()]
+            names = [n.strip().lower() for n in agent_name.split(',')]
+            reports = [r for r in reports if r.agent_name.lower() in names]
         if report_type:
             reports = [r for r in reports if r.report_type == report_type]
         if starred is not None:

@@ -786,18 +786,21 @@ async def list_schedule():
 @app.post("/api/schedule")
 async def create_schedule(data: ScheduledJobCreate):
     job = scheduler_manager.add_job(data)
+    await ws_manager.broadcast("schedule_changed", job.model_dump(mode="json"))
     return job.model_dump(mode="json")
 
 
 @app.post("/api/schedule/simple")
 async def create_schedule_simple(data: ScheduledJobCreateSimple):
     job = scheduler_manager.add_job_simple(data)
+    await ws_manager.broadcast("schedule_changed", job.model_dump(mode="json"))
     return job.model_dump(mode="json")
 
 
 @app.delete("/api/schedule/{job_id}")
 async def delete_schedule(job_id: str):
     scheduler_manager.remove_job(job_id)
+    await ws_manager.broadcast("schedule_changed", {"id": job_id, "action": "deleted"})
     return {"status": "deleted"}
 
 
@@ -806,6 +809,7 @@ async def toggle_schedule(job_id: str):
     job = scheduler_manager.toggle_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    await ws_manager.broadcast("schedule_changed", job.model_dump(mode="json"))
     return job.model_dump(mode="json")
 
 
@@ -817,6 +821,7 @@ async def get_calendar(days: int = 30):
 @app.post("/api/schedule/{job_id}/run")
 async def run_schedule_now(job_id: str):
     result = await asyncio.to_thread(scheduler_manager.run_job_now, job_id)
+    await ws_manager.broadcast("schedule_changed", {"id": job_id, "action": "executed"})
     return result
 
 
@@ -1398,7 +1403,9 @@ async def list_strategies():
 
 @app.post("/api/strategies")
 async def create_strategy(data: StrategyCreate):
-    return strategy_manager.create(data.model_dump())
+    s = strategy_manager.create(data.model_dump())
+    await ws_manager.broadcast("strategy_changed", s)
+    return s
 
 
 @app.get("/api/strategies/{strategy_id}")
@@ -1415,6 +1422,7 @@ async def update_strategy(strategy_id: str, data: StrategyUpdate):
     s = strategy_manager.update(strategy_id, updates)
     if not s:
         raise HTTPException(status_code=404, detail="Strategy not found")
+    await ws_manager.broadcast("strategy_changed", s)
     return s
 
 
@@ -1422,6 +1430,7 @@ async def update_strategy(strategy_id: str, data: StrategyUpdate):
 async def delete_strategy(strategy_id: str):
     if not strategy_manager.delete(strategy_id):
         raise HTTPException(status_code=404, detail="Strategy not found")
+    await ws_manager.broadcast("strategy_changed", {"id": strategy_id, "action": "deleted"})
     return {"status": "deleted"}
 
 

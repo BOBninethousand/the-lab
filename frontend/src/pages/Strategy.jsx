@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { StatCard } from '../components/StatCard'
+import { useWebSocket } from '../hooks/useWebSocket'
 import {
   getStrategies,
   createStrategy,
@@ -10,6 +13,7 @@ import {
   getStrategyProgress,
   getAgents,
   getSchedule,
+  getReport,
 } from '../lib/api'
 import {
   Target,
@@ -24,9 +28,13 @@ import {
   Play,
   FileText,
   Zap,
-  Brain,
   Calendar,
   Link2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Eye,
+  DollarSign,
 } from 'lucide-react'
 
 const STATUS_COLOURS = {
@@ -63,7 +71,57 @@ export function Strategy() {
     tags: [],
   })
 
+  const [agentStatuses, setAgentStatuses] = useState({})
+  const [viewingReport, setViewingReport] = useState(null)
+  const [loadingReport, setLoadingReport] = useState(false)
+
   const navigate = useNavigate()
+  const { events } = useWebSocket()
+
+  // Track agent running/idle status via WebSocket
+  useEffect(() => {
+    if (events.length > 0) {
+      const e = events[0]
+      if (e.type === 'agent_status' && e.data?.id) {
+        setAgentStatuses(prev => ({ ...prev, [e.data.id]: { status: e.data.status, current_task: e.data.current_task } }))
+      }
+      const refreshTypes = ['agent_created', 'agent_deleted', 'schedule_changed', 'strategy_changed', 'report_created', 'task_completed']
+      if (refreshTypes.includes(e.type)) {
+        loadData()
+      }
+    }
+  }, [events])
+
+  const handleViewReport = async (reportId) => {
+    setLoadingReport(true)
+    try {
+      const report = await getReport(reportId)
+      setViewingReport(report)
+    } catch { showError('Failed to load report') }
+    finally { setLoadingReport(false) }
+  }
+
+  const timeAgo = (isoStr) => {
+    if (!isoStr) return ''
+    const diff = Date.now() - new Date(isoStr).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins}m ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    const days = Math.floor(hrs / 24)
+    return `${days}d ago`
+  }
+
+  const getHealthColour = (prog) => {
+    if (!prog || prog.success_rate_7d === null || prog.success_rate_7d === undefined) return 'bg-lab-text-muted/30'
+    const lastExecMs = prog.last_execution_at ? Date.now() - new Date(prog.last_execution_at).getTime() : Infinity
+    const within48h = lastExecMs < 48 * 60 * 60 * 1000
+    const within7d = lastExecMs < 7 * 24 * 60 * 60 * 1000
+    if (prog.success_rate_7d >= 80 && within48h) return 'bg-emerald-500'
+    if (prog.success_rate_7d >= 50 || within7d) return 'bg-amber-500'
+    return 'bg-red-500'
+  }
 
   const loadData = async () => {
     setIsLoading(true)
@@ -391,169 +449,303 @@ export function Strategy() {
 
                 {/* Expanded content */}
                 {isExpanded && (
-                  <div className="border-t border-lab-border px-5 py-4 space-y-4">
-                    {/* Problem & Approach */}
-                    {strategy.approach && (
-                      <div>
-                        <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-1">
-                          Approach
-                        </div>
-                        <p className="text-xs text-lab-text-secondary leading-relaxed">
-                          {strategy.approach}
-                        </p>
-                      </div>
-                    )}
+                  <div className="border-t border-lab-border">
+                    {/* Health bar */}
+                    <div className={`h-[3px] ${getHealthColour(prog)} transition-all duration-500`} />
 
-                    {/* Linked agents */}
-                    {agentNames.length > 0 && (
-                      <div>
-                        <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
-                          Assigned Agents
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {agentNames.map((name, i) => (
-                            <span key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-lab-elevated text-lab-text-secondary border border-lab-border">
-                              <AvatarCircle name={name} agent={name} size={14} />
-                              {name}
+                    <div className="px-5 py-4 space-y-4">
+                      {/* Health label + last run */}
+                      {prog && (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {prog.success_rate_7d !== null && prog.success_rate_7d !== undefined && (
+                              <span className={`text-[11px] font-medium ${prog.success_rate_7d >= 80 ? 'text-emerald-400' : prog.success_rate_7d >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                                {prog.success_rate_7d}% success rate (7d)
+                              </span>
+                            )}
+                            {prog.total_cost_7d > 0 && (
+                              <span className="flex items-center gap-1 text-[11px] text-lab-text-muted">
+                                <DollarSign size={10} />${prog.total_cost_7d.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                          {prog.last_execution_at && (
+                            <span className="flex items-center gap-1 text-[11px] text-lab-text-muted">
+                              <Clock size={10} />
+                              Last run {timeAgo(prog.last_execution_at)}
                             </span>
-                          ))}
+                          )}
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Schedules (auto-detected from agents + manually linked) */}
-                    {prog?.schedules?.length > 0 && (
-                      <div>
-                        <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
-                          Schedules
+                      {/* Approach */}
+                      {strategy.approach && (
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-1">
+                            Approach
+                          </div>
+                          <p className="text-xs text-lab-text-secondary leading-relaxed">
+                            {strategy.approach}
+                          </p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {prog.schedules.map(sched => (
-                            <button
-                              key={sched.id}
-                              onClick={() => navigate('/calendar')}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs bg-lab-elevated text-lab-text-secondary border border-lab-border hover:bg-white/[0.03] transition-subtle"
-                            >
-                              <Calendar size={12} className="text-lab-text-muted" />
-                              <span>{sched.name}</span>
-                              <span className="text-[10px] text-lab-text-faint">{sched.cron}</span>
-                              {!sched.enabled && (
-                                <span className="px-1 py-0.5 rounded text-[9px] text-lab-text-muted bg-white/[0.05]">OFF</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* No schedules hint */}
-                    {prog && prog.schedule_count === 0 && agentNames.length > 0 && (
-                      <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
-                        <p className="text-xs text-amber-400/80">
-                          No scheduled jobs found for {agentNames.join(' or ')}. Create jobs in Calendar so agents produce reports automatically.
-                        </p>
-                        <button
-                          onClick={() => navigate('/calendar')}
-                          className="mt-2 flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-subtle"
-                        >
-                          <Calendar size={12} />
-                          Go to Calendar
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Progress metrics */}
-                    {prog && (prog.reports_count > 0 || prog.executions_total > 0) && (
-                      <div>
-                        <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
-                          Progress
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div className="bg-lab-elevated rounded-md p-3 border border-lab-border">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <FileText size={12} className="text-lab-text-muted" />
-                              <span className="text-[10px] text-lab-text-muted">Reports</span>
-                            </div>
-                            <div className="text-lg font-semibold text-lab-text-primary">{prog.reports_count}</div>
-                          </div>
-                          <div className="bg-lab-elevated rounded-md p-3 border border-lab-border">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Zap size={12} className="text-lab-text-muted" />
-                              <span className="text-[10px] text-lab-text-muted">Executions</span>
-                            </div>
-                            <div className="text-lg font-semibold text-lab-text-primary">{prog.executions_successful}/{prog.executions_total}</div>
-                          </div>
-                          <div className="bg-lab-elevated rounded-md p-3 border border-lab-border">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Brain size={12} className="text-lab-text-muted" />
-                              <span className="text-[10px] text-lab-text-muted">Agents</span>
-                            </div>
-                            <div className="text-lg font-semibold text-lab-text-primary">{prog.agent_count}</div>
-                          </div>
-                          <div className="bg-lab-elevated rounded-md p-3 border border-lab-border">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Link2 size={12} className="text-lab-text-muted" />
-                              <span className="text-[10px] text-lab-text-muted">Schedules</span>
-                            </div>
-                            <div className="text-lg font-semibold text-lab-text-primary">{prog.schedule_count}</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Quick links to results */}
-                    <div className="flex flex-wrap gap-2">
+                      {/* Assigned Agents with status dots */}
                       {agentNames.length > 0 && (
-                        <button
-                          onClick={() => navigate(`/documents?agent=${agentNames.join(',')}`)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-lab-accent/10 text-lab-accent hover:bg-lab-accent/20 transition-subtle"
-                        >
-                          <FileText size={12} />
-                          View Reports {prog ? `(${prog.reports_count})` : ''}
-                        </button>
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
+                            Assigned Agents
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {(strategy.agent_ids || []).map((id, i) => {
+                              const name = getAgentName(id)
+                              const status = agentStatuses[id]
+                              const isWorking = status?.status === 'working'
+                              return (
+                                <span key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-lab-elevated text-lab-text-secondary border border-lab-border">
+                                  <span className="relative flex-shrink-0">
+                                    <AvatarCircle name={name} agent={name} size={14} />
+                                    <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-lab-surface ${isWorking ? 'bg-emerald-400 animate-pulse' : 'bg-lab-text-muted/40'}`} />
+                                  </span>
+                                  {name}
+                                  {isWorking && status.current_task && (
+                                    <span className="text-[10px] text-emerald-400/70 ml-1">{status.current_task}</span>
+                                  )}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
                       )}
-                      {prog?.schedule_count > 0 && (
-                        <button
-                          onClick={() => navigate('/calendar')}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-white/[0.04] text-lab-text-secondary hover:bg-white/[0.06] transition-subtle"
-                        >
-                          <Calendar size={12} />
-                          View Schedules ({prog.schedule_count})
-                        </button>
-                      )}
-                    </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 pt-2 border-t border-lab-border">
-                      <button
-                        onClick={() => handleStatusToggle(strategy)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
-                      >
-                        {strategy.status === 'active'
-                          ? <><Pause size={12} /> Pause</>
-                          : strategy.status === 'paused'
-                          ? <><Check size={12} /> Complete</>
-                          : <><Play size={12} /> Reactivate</>
-                        }
-                      </button>
-                      <button
-                        onClick={() => startEdit(strategy)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
-                      >
-                        <Edit3 size={12} /> Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(strategy.id)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-red-400/70 hover:bg-red-500/10 transition-subtle ml-auto"
-                      >
-                        <Trash2 size={12} /> Delete
-                      </button>
+                      {/* Schedules */}
+                      {prog?.schedules?.length > 0 && (
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
+                            Schedules
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {prog.schedules.map(sched => (
+                              <button
+                                key={sched.id}
+                                onClick={() => navigate('/calendar')}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs bg-lab-elevated text-lab-text-secondary border border-lab-border hover:bg-white/[0.03] transition-subtle"
+                              >
+                                <Calendar size={12} className="text-lab-text-muted" />
+                                <span>{sched.name}</span>
+                                <span className="text-[10px] text-lab-text-faint">{sched.cron}</span>
+                                {!sched.enabled && (
+                                  <span className="px-1 py-0.5 rounded text-[9px] text-lab-text-muted bg-white/[0.05]">OFF</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* No schedules hint */}
+                      {prog && prog.schedule_count === 0 && agentNames.length > 0 && (
+                        <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                          <p className="text-xs text-amber-400/80">
+                            No scheduled jobs found for {agentNames.join(' or ')}. Create jobs in Calendar so agents produce reports automatically.
+                          </p>
+                          <button
+                            onClick={() => navigate('/calendar')}
+                            className="mt-2 flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-subtle"
+                          >
+                            <Calendar size={12} />
+                            Go to Calendar
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Activity Timeline — last 5 executions */}
+                      {prog?.recent_executions?.length > 0 && (
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
+                            Recent Activity
+                          </div>
+                          <div className="space-y-1.5">
+                            {prog.recent_executions.map((exec, i) => (
+                              <div key={exec.id || i} className="flex items-start gap-2 p-2 rounded-md bg-lab-elevated/50 border border-lab-border/50">
+                                {exec.status === 'success'
+                                  ? <CheckCircle2 size={14} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                                  : <XCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+                                }
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs text-lab-text-primary truncate">
+                                      {exec.agent_name} — {exec.job_name}
+                                    </span>
+                                    <span className="text-[10px] text-lab-text-faint flex-shrink-0">{timeAgo(exec.executed_at)}</span>
+                                  </div>
+                                  {exec.status === 'failed' && exec.error ? (
+                                    <p className="text-[11px] text-red-400/80 mt-0.5 truncate">{exec.error}</p>
+                                  ) : exec.result_preview ? (
+                                    <p className="text-[11px] text-lab-text-muted mt-0.5 line-clamp-2">{exec.result_preview.slice(0, 150)}</p>
+                                  ) : null}
+                                </div>
+                                {exec.result_document_id && (
+                                  <button
+                                    onClick={() => handleViewReport(exec.result_document_id)}
+                                    className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-lab-accent hover:bg-lab-accent/10 rounded transition-subtle flex-shrink-0"
+                                  >
+                                    <Eye size={10} /> View
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recent Reports — last 3 */}
+                      {prog?.recent_reports?.length > 0 && (
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
+                            Latest Reports
+                          </div>
+                          <div className="space-y-1.5">
+                            {prog.recent_reports.map((rpt, i) => (
+                              <div key={rpt.id || i} className="flex items-center gap-2 p-2 rounded-md bg-lab-elevated/50 border border-lab-border/50">
+                                <AvatarCircle name={rpt.agent_name} agent={rpt.agent_name} size={16} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs text-lab-text-primary truncate">{rpt.title}</div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-lab-text-muted">{rpt.agent_name}</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] bg-white/[0.04] text-lab-text-faint">{rpt.report_type}</span>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] text-lab-text-faint flex-shrink-0">{timeAgo(rpt.created_at)}</span>
+                                <button
+                                  onClick={() => handleViewReport(rpt.id)}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-lab-accent hover:bg-lab-accent/10 rounded transition-subtle flex-shrink-0"
+                                >
+                                  <Eye size={10} /> View
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Summary stats row */}
+                      {prog && (prog.reports_count > 0 || prog.executions_total > 0) && (
+                        <div className="flex flex-wrap items-center gap-4 text-[11px] text-lab-text-muted py-1">
+                          <span className="flex items-center gap-1">
+                            <FileText size={11} /> {prog.reports_count} reports ({prog.reports_this_week} this week)
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Zap size={11} /> {prog.executions_successful}/{prog.executions_total} executions
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Link2 size={11} /> {prog.schedule_count} schedules
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Quick links */}
+                      <div className="flex flex-wrap gap-2">
+                        {agentNames.length > 0 && (
+                          <button
+                            onClick={() => navigate(`/documents?agent=${agentNames.join(',')}`)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-lab-accent/10 text-lab-accent hover:bg-lab-accent/20 transition-subtle"
+                          >
+                            <FileText size={12} />
+                            View All Reports {prog ? `(${prog.reports_count})` : ''}
+                          </button>
+                        )}
+                        {prog?.schedule_count > 0 && (
+                          <button
+                            onClick={() => navigate('/calendar')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-white/[0.04] text-lab-text-secondary hover:bg-white/[0.06] transition-subtle"
+                          >
+                            <Calendar size={12} />
+                            View Schedules ({prog.schedule_count})
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-lab-border">
+                        <button
+                          onClick={() => handleStatusToggle(strategy)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
+                        >
+                          {strategy.status === 'active'
+                            ? <><Pause size={12} /> Pause</>
+                            : strategy.status === 'paused'
+                            ? <><Check size={12} /> Complete</>
+                            : <><Play size={12} /> Reactivate</>
+                          }
+                        </button>
+                        <button
+                          onClick={() => startEdit(strategy)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"
+                        >
+                          <Edit3 size={12} /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(strategy.id)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-red-400/70 hover:bg-red-500/10 transition-subtle ml-auto"
+                        >
+                          <Trash2 size={12} /> Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Report viewer modal */}
+      {viewingReport && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setViewingReport(null)}>
+          <div className="card-elevated w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-lab-border flex-shrink-0">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-lab-text-primary truncate">{viewingReport.title}</h2>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[11px] text-lab-text-muted">{viewingReport.agent_name}</span>
+                  {viewingReport.report_type && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] bg-white/[0.04] text-lab-text-faint">{viewingReport.report_type}</span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setViewingReport(null)} className="p-1 hover:bg-white/[0.05] rounded transition-subtle">
+                <X size={16} className="text-lab-text-muted" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-5">
+              <div className="prose prose-invert prose-sm max-w-none
+                prose-headings:text-lab-text-primary prose-headings:font-semibold
+                prose-p:text-lab-text-secondary prose-p:leading-relaxed
+                prose-strong:text-lab-text-primary
+                prose-a:text-lab-accent prose-a:no-underline hover:prose-a:underline
+                prose-code:text-lab-text-secondary prose-code:bg-lab-elevated prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+                prose-pre:bg-lab-elevated prose-pre:border prose-pre:border-lab-border prose-pre:rounded-md
+                prose-li:text-lab-text-secondary
+                prose-table:border-collapse prose-th:border prose-th:border-lab-border prose-th:px-3 prose-th:py-1.5 prose-th:text-lab-text-primary prose-th:bg-lab-surface
+                prose-td:border prose-td:border-lab-border prose-td:px-3 prose-td:py-1.5 prose-td:text-lab-text-secondary
+                prose-blockquote:border-lab-border prose-blockquote:text-lab-text-muted
+                prose-hr:border-lab-border
+              ">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {viewingReport.content || 'No content available.'}
+                </ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading overlay for report fetch */}
+      {loadingReport && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="card-elevated px-6 py-4 text-xs text-lab-text-secondary">Loading report...</div>
         </div>
       )}
     </div>

@@ -7,6 +7,7 @@ import {
   getMemoryStats, getAgents, bulkImportKnowledge,
   scanDirectory, importKnowledgeFiles,
 } from '../lib/api'
+import { useWebSocket } from '../hooks/useWebSocket'
 import { formatDate } from '../lib/time'
 
 const CATEGORIES = [
@@ -78,10 +79,31 @@ export function Memory() {
   const [form, setForm] = useState({ title: '', content: '', tags: '', category: 'fact' })
   const [correctionForm, setCorrectionForm] = useState({ agent_id: '', original_response: '', correction: '', tags: '' })
 
+  const { events } = useWebSocket()
+
   useEffect(() => {
     loadStats()
     loadAgents()
   }, [])
+
+  // Re-fetch when knowledge/memory/correction events arrive
+  useEffect(() => {
+    if (events.length > 0) {
+      const e = events[0]
+      if (e.type === 'knowledge_added') {
+        loadKnowledge()
+        loadStats()
+      }
+      if (e.type === 'memory_added' && activeTab === 'agent') {
+        loadAgentMemories()
+        loadStats()
+      }
+      if (e.type === 'correction_added' && activeTab === 'corrections') {
+        loadCorrections()
+        loadStats()
+      }
+    }
+  }, [events])
 
   useEffect(() => {
     if (activeTab === 'knowledge') loadKnowledge()

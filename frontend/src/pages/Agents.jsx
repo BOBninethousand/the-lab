@@ -66,7 +66,7 @@ export function Agents() {
     loadAgents()
     loadSettings()
 
-    // Listen for WebSocket agent status updates
+    // Listen for WebSocket agent events
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`)
     ws.onmessage = (event) => {
       try {
@@ -75,6 +75,9 @@ export function Agents() {
           setAgents(prev => prev.map(a =>
             a.id === msg.data.id ? { ...a, status: msg.data.status, current_task: msg.data.current_task } : a
           ))
+        }
+        if (msg.type === 'agent_created' || msg.type === 'agent_deleted') {
+          loadAgents()
         }
       } catch (e) {
         // ignore

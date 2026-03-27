@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Play, Trash2, ChevronDown, Star, Clock, CheckCircle, XCircle, AlertTriangle, X } from 'lucide-react'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { ScheduleWizard } from '../components/calendar/ScheduleWizard'
+import { useWebSocket } from '../hooks/useWebSocket'
 import {
   getSchedule, getAgents, createScheduleSimple, runSchedule, updateSchedule, deleteSchedule,
   getJobExecutions, submitJobFeedback, previewCron,
@@ -51,11 +52,23 @@ export function Calendar() {
   })
   const [cronPreview, setCronPreview] = useState(null)
 
+  const { events } = useWebSocket()
+
   useEffect(() => { loadData() }, [])
 
   useEffect(() => {
     if (selectedJob) loadExecutions(selectedJob.id)
   }, [selectedJob])
+
+  // Re-fetch when schedules change from other sources (Master Chat, other tabs)
+  useEffect(() => {
+    if (events.length > 0) {
+      const e = events[0]
+      if (['schedule_changed', 'agent_created', 'agent_deleted'].includes(e.type)) {
+        loadData()
+      }
+    }
+  }, [events])
 
   // Live cron preview when schedule builder changes
   useEffect(() => {
