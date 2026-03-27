@@ -261,3 +261,25 @@ class Report(BaseModel):
     read: bool = False
     notion_page_url: Optional[str] = None
     created_at: datetime
+
+
+# --- Strategy Models ---
+
+class StrategyCreate(BaseModel):
+    title: str
+    problem: str = ""
+    approach: str = ""
+    agent_ids: List[str] = []
+    schedule_ids: List[str] = []
+    status: str = "active"  # active, paused, completed
+    tags: List[str] = []
+
+
+class StrategyUpdate(BaseModel):
+    title: Optional[str] = None
+    problem: Optional[str] = None
+    approach: Optional[str] = None
+    agent_ids: Optional[List[str]] = None
+    schedule_ids: Optional[List[str]] = None
+    status: Optional[str] = None
+    tags: Optional[List[str]] = None
