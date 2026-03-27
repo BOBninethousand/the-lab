@@ -12,9 +12,6 @@ export function MasterChat() {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
-  // Hide on Office page — Claw3D has its own chat
-  if (location.pathname === '/office') return null
-
   useEffect(() => {
     if (isOpen) {
       loadHistory()
@@ -25,6 +22,9 @@ export function MasterChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Hide on Office page — Claw3D has its own chat (must be after all hooks)
+  if (location.pathname === '/office') return null
 
   const loadHistory = async () => {
     try {
