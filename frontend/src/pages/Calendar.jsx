@@ -212,7 +212,7 @@ export function Calendar() {
                         <StatusBadge status={job.last_status} />
                         {job.last_run && (
                           <span className="text-[10px] text-lab-text-muted">
-                            {formatDistanceToNow(new Date(job.last_run))}
+                            {formatDistanceToNow(job.last_run)}
                           </span>
                         )}
                       </div>

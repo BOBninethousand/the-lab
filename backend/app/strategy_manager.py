@@ -3,7 +3,7 @@
 import json
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.config import settings
@@ -22,7 +22,7 @@ class StrategyManager:
 
     def create(self, data: dict) -> dict:
         sid = str(uuid.uuid4())
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         strategy = {
             "id": sid,
             "title": data["title"],
@@ -64,7 +64,7 @@ class StrategyManager:
         for key in ("title", "problem", "approach", "agent_ids", "schedule_ids", "status", "tags"):
             if key in data:
                 strategy[key] = data[key]
-        strategy["updated_at"] = datetime.utcnow().isoformat()
+        strategy["updated_at"] = datetime.now(timezone.utc).isoformat()
         with open(self._path(sid), "w") as f:
             json.dump(strategy, f, indent=2)
         return strategy
@@ -144,7 +144,7 @@ class StrategyManager:
         last_execution_at = recent_executions[0]["executed_at"] if recent_executions else None
 
         # Success rate over last 7 days
-        week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         execs_7d = [e for e in all_execs if (e.executed_at.isoformat() if hasattr(e.executed_at, 'isoformat') else str(e.executed_at)) >= week_ago]
         success_rate_7d = round(sum(1 for e in execs_7d if e.status == "success") / len(execs_7d) * 100) if execs_7d else None
 

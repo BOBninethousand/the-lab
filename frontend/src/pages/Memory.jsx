@@ -454,7 +454,7 @@ export function Memory() {
                         <div className="text-xs text-lab-text-muted mt-1 line-clamp-1">{entry.content}</div>
                       </div>
                       <div className="flex items-center gap-2 ml-2">
-                        <span className="text-[10px] text-lab-text-muted">{formatDate(new Date(entry.created_at))}</span>
+                        <span className="text-[10px] text-lab-text-muted">{formatDate(entry.created_at)}</span>
                         <ChevronDown size={14} className={`text-lab-text-muted transition-transform ${expandedId === entry.id ? 'rotate-180' : ''}`} />
                       </div>
                     </div>
@@ -527,7 +527,7 @@ export function Memory() {
                             <TypeIcon size={10} />
                             {mem.memory_type}
                           </span>
-                          <span className="text-[10px] text-lab-text-muted">{formatDate(new Date(mem.created_at))}</span>
+                          <span className="text-[10px] text-lab-text-muted">{formatDate(mem.created_at)}</span>
                         </div>
                         <p className="text-xs text-lab-text-secondary leading-relaxed">{mem.content}</p>
                         {mem.tags?.length > 0 && (
@@ -614,7 +614,7 @@ export function Memory() {
                         <span className="px-2 py-0.5 rounded text-[10px] font-medium text-amber-400 bg-amber-400/10">
                           1x — needs 1 more to become rule
                         </span>
-                        <span className="text-[10px] text-lab-text-muted">{formatDate(new Date(corr.created_at))}</span>
+                        <span className="text-[10px] text-lab-text-muted">{formatDate(corr.created_at)}</span>
                       </div>
                       <p className="text-xs text-lab-text-primary font-medium mb-1">{corr.correction}</p>
                       <p className="text-[10px] text-lab-text-muted line-clamp-2">Original: {corr.original_response}</p>

@@ -6,7 +6,7 @@ Solves Problem #1 from the meeting: "If it goes through the API we're burning to
 import json
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from app.config import settings
 
@@ -79,7 +79,7 @@ class CostTracker:
         cost = self.estimate_cost(provider, model, input_tokens, output_tokens)
         entry = {
             "id": str(uuid.uuid4()),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "agent_id": agent_id,
             "agent_name": agent_name,
             "provider": provider,
@@ -96,7 +96,7 @@ class CostTracker:
         return entry
 
     def get_today_spend(self) -> float:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         log = self._load_log()
         return sum(e["cost_usd"] for e in log if e["timestamp"].startswith(today))
 
@@ -104,7 +104,7 @@ class CostTracker:
         return self.get_today_spend() >= self.daily_budget
 
     def get_summary(self, days: int = 30) -> dict:
-        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         log = self._load_log()
         recent = [e for e in log if e["timestamp"] >= cutoff]
 
@@ -168,7 +168,7 @@ class CostTracker:
 
     def get_scorecard(self, days: int = 7) -> dict:
         """Agent value scorecard — maps cost to visible output for ROI tracking."""
-        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         log = self._load_log()
         recent = [e for e in log if e["timestamp"] >= cutoff]
 
@@ -211,6 +211,6 @@ class CostTracker:
 
     def get_cost_for_agents(self, agent_ids: set, days: int = 7) -> float:
         """Sum cost for specific agents over N days."""
-        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         log = self._load_log()
         return round(sum(e["cost_usd"] for e in log if e.get("agent_id") in agent_ids and e["timestamp"] >= cutoff), 4)

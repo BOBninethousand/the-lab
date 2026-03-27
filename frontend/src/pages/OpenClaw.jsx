@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { parseUTC } from '../lib/time'
 import {
   Wifi,
   WifiOff,
@@ -584,7 +585,7 @@ export function OpenClaw() {
                     )}
                   </div>
                   <div className="text-xs text-lab-text-faint whitespace-nowrap">
-                    {item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : ''}
+                    {item.timestamp ? parseUTC(item.timestamp).toLocaleTimeString() : ''}
                   </div>
                 </div>
               ))}

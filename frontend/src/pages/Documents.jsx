@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Search, Star, FileText, Copy, Trash2, X, ChevronDown, Circle, ExternalLink, Upload } from 'lucide-react'
 import { getReports, getReportStats, updateReport, deleteReport, publishReportToNotion, getNotionStatus } from '../lib/api'
-import { formatDistanceToNow } from '../lib/time'
+import { formatDistanceToNow, parseUTC } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useSearchParams } from 'react-router-dom'
@@ -43,13 +43,14 @@ const TYPE_LABELS = {
 }
 
 function formatFullDate(date) {
-  return new Date(date).toLocaleDateString('en-GB', {
+  return parseUTC(date).toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZoneName: 'short',
   })
 }
 
@@ -402,7 +403,7 @@ export function Documents() {
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-lab-text-muted">{report.agent_name}</span>
                           <span className="text-lab-text-faint text-[10px]">&middot;</span>
-                          <span className="text-[11px] text-lab-text-muted">{formatDistanceToNow(new Date(report.created_at))}</span>
+                          <span className="text-[11px] text-lab-text-muted">{formatDistanceToNow(report.created_at)}</span>
                         </div>
                         <p className="text-xs text-lab-text-muted mt-1 truncate">
                           {report.content?.replace(/[#*_\n]/g, ' ').slice(0, 120)}

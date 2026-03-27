@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Request
 
@@ -568,7 +569,7 @@ async def compress_memories(data: dict = {}):
         memories = agent_memory_manager.get_for_agent(agent_dir)
         old_memories = [
             m for m in memories
-            if (datetime.now() - datetime.fromisoformat(str(m.created_at))).days > days_threshold
+            if (datetime.now(timezone.utc) - datetime.fromisoformat(str(m.created_at)).replace(tzinfo=timezone.utc)).days > days_threshold
         ]
         if len(old_memories) < 3:
             results[agent_dir] = {"compressed": 0, "reason": "not enough old memories"}

@@ -3,7 +3,7 @@ import os
 import uuid
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from app.config import settings
 from app.models import Agent, AgentCreate, Task, TaskCreate, ChatMessage
@@ -117,7 +117,7 @@ class AgentManager:
                     for agent_id, agent_data in data.items():
                         agent_data["created_at"] = datetime.fromisoformat(
                             agent_data["created_at"]
-                        )
+                        ).replace(tzinfo=timezone.utc)
                         self.agents[agent_id] = Agent(**agent_data)
                 # Sync backstories/goals/roles from DEFAULT_AGENTS for built-in agents
                 self._sync_default_backstories()
@@ -156,7 +156,7 @@ class AgentManager:
                 status="idle",
                 current_task=None,
                 avatar_color=agent_data["avatar_color"],
-                created_at=datetime.now(),
+                created_at=datetime.now(timezone.utc),
             )
             self.agents[agent.id] = agent
         self._save_agents()
@@ -169,11 +169,11 @@ class AgentManager:
                     for task_id, task_data in data.items():
                         task_data["created_at"] = datetime.fromisoformat(
                             task_data["created_at"]
-                        )
+                        ).replace(tzinfo=timezone.utc)
                         if task_data.get("completed_at"):
                             task_data["completed_at"] = datetime.fromisoformat(
                                 task_data["completed_at"]
-                            )
+                            ).replace(tzinfo=timezone.utc)
                         self.tasks[task_id] = Task(**task_data)
             except Exception as e:
                 print(f"Error loading tasks: {e}")
@@ -217,7 +217,7 @@ class AgentManager:
             status="idle",
             current_task=None,
             avatar_color=AVATAR_COLORS.get(data.provider, "#3b6fcc"),
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
         )
         self.agents[agent.id] = agent
         self._save_agents()
@@ -415,7 +415,7 @@ class AgentManager:
             "role": role,
             "content": content,
             "agent_id": agent_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         messages.append(message)
 
@@ -500,7 +500,7 @@ class AgentManager:
             description=data.description,
             agent_id=data.agent_id,
             status="pending",
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             completed_at=None,
             result=None,
         )
@@ -529,7 +529,7 @@ class AgentManager:
         try:
             result = self.chat(task.agent_id, task.description, task_type="task")
             task.status = "completed"
-            task.completed_at = datetime.now()
+            task.completed_at = datetime.now(timezone.utc)
             task.result = result
             self._save_tasks()
             return {
@@ -540,7 +540,7 @@ class AgentManager:
             }
         except Exception as e:
             task.status = "failed"
-            task.completed_at = datetime.now()
+            task.completed_at = datetime.now(timezone.utc)
             task.result = str(e)
             self._save_tasks()
             return {"task_id": task.id, "status": "failed", "error": str(e)}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { FlaskConical, Send, X, Trash2, Loader2, Copy, Check } from 'lucide-react'
 import { sendMasterChat, getMasterChatHistory, clearMasterChatHistory } from '../lib/api'
+import { parseUTC } from '../lib/time'
 
 export function MasterChat() {
   const location = useLocation()
@@ -146,7 +147,7 @@ export function MasterChat() {
                   <div className="flex items-center justify-between mt-1">
                     {msg.timestamp && (
                       <div className="text-[9px] text-lab-text-faint">
-                        {new Date(msg.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        {parseUTC(msg.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     )}
                     {msg.role === 'assistant' && (

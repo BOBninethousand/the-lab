@@ -2,7 +2,7 @@ import httpx
 import json
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from app.config import settings
 
@@ -300,7 +300,7 @@ class NotionBridge:
         pages = await self.query_database(filters)
         tasks = [self._normalize_task(p) for p in pages]
         self._cached_tasks = tasks
-        self.last_sync = datetime.now().isoformat()
+        self.last_sync = datetime.now(timezone.utc).isoformat()
         logger.info(f"Pulled {len(tasks)} tasks from Notion")
         return tasks
 
@@ -315,7 +315,7 @@ class NotionBridge:
         pages = await self.query_database(filters)
         tasks = [self._normalize_task(p) for p in pages]
         self._cached_tasks = tasks
-        self.last_sync = datetime.now().isoformat()
+        self.last_sync = datetime.now(timezone.utc).isoformat()
         return tasks
 
     def get_cached_tasks(self) -> List[Dict[str, Any]]:
@@ -526,7 +526,7 @@ class NotionBridge:
             return None
         try:
             # Make title unique with date
-            dated_title = f"{title} — {datetime.now().strftime('%d %b')}"
+            dated_title = f"{title} — {datetime.now(timezone.utc).strftime('%d %b')}"
 
             # Get or create per-agent database
             db_id = await self._get_or_create_agent_db(agent_name or "General")
@@ -555,7 +555,7 @@ class NotionBridge:
                     "properties": {
                         "Title": {"title": [{"text": {"content": dated_title}}]},
                         "Type": {"select": {"name": type_label}},
-                        "Date": {"date": {"start": datetime.now().strftime("%Y-%m-%d")}},
+                        "Date": {"date": {"start": datetime.now(timezone.utc).strftime("%Y-%m-%d")}},
                         "Source": {"select": {"name": source_label}},
                     },
                     "children": content_blocks,

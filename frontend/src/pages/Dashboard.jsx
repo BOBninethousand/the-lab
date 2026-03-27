@@ -181,7 +181,7 @@ export function Dashboard() {
                         <ExternalLink size={10} className="text-emerald-400 ml-auto" />
                       </div>
                       <p className="text-xs text-lab-text-primary font-medium truncate">{r.title}</p>
-                      <p className="text-[10px] text-lab-text-muted mt-0.5">{formatDistanceToNow(new Date(r.created_at))}</p>
+                      <p className="text-[10px] text-lab-text-muted mt-0.5">{formatDistanceToNow(r.created_at)}</p>
                     </a>
                   ))}
                 </div>
@@ -319,7 +319,7 @@ export function Dashboard() {
                 <div className="flex items-center gap-2 mb-2">
                   <AvatarCircle name={report.agent_name} agent={report.agent_name} size={20} />
                   <span className="text-[11px] text-lab-text-muted">{report.agent_name}</span>
-                  <span className="text-[10px] text-lab-text-faint ml-auto">{formatDistanceToNow(new Date(report.created_at))}</span>
+                  <span className="text-[10px] text-lab-text-faint ml-auto">{formatDistanceToNow(report.created_at)}</span>
                 </div>
                 <div className="text-xs font-medium text-lab-text-primary truncate mb-1">{report.title}</div>
                 <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-medium bg-white/[0.06] text-lab-text-muted mb-1.5">

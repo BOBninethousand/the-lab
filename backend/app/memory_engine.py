@@ -3,7 +3,7 @@ import os
 import uuid
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from app.config import settings
 from app.models import (
@@ -24,7 +24,7 @@ class KnowledgeBaseManager:
         os.makedirs(self.dir, exist_ok=True)
 
     async def add(self, data: KnowledgeCreate) -> KnowledgeEntry:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         embedding = await self.embedding.embed_text(f"{data.title} {data.content}")
         entry = KnowledgeEntry(
             id=str(uuid.uuid4()),
@@ -91,7 +91,7 @@ class KnowledgeBaseManager:
         for key, val in data.items():
             if key in ("title", "content", "tags", "category", "notion_page_id") and val is not None:
                 setattr(entry, key, val)
-        entry.updated_at = datetime.now()
+        entry.updated_at = datetime.now(timezone.utc)
         if "title" in data or "content" in data:
             entry.embedding = await self.embedding.embed_text(f"{entry.title} {entry.content}")
         self._save(entry)
@@ -147,7 +147,7 @@ class AgentMemoryManager:
             tags=tags or [],
             embedding=embedding,
             source_chat_id=source_chat_id,
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
         )
         path = f"{self._agent_dir(agent_id)}/{entry.id}.json"
         with open(path, "w") as f:
@@ -334,7 +334,7 @@ class CorrectionManager:
             correction=data.correction,
             embedding=embedding,
             tags=data.tags,
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
         )
         self._save(entry)
         return entry

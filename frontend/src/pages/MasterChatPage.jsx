@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { FlaskConical, Send, Loader2, Copy, Check, Plus, Trash2, Pencil, MessageSquare, Sparkles, Bot, CalendarDays, BookOpen, X } from 'lucide-react'
 import { listConversations, createConversation, getConversation, deleteConversation, renameConversation, chatInConversation } from '../lib/api'
+import { parseUTC } from '../lib/time'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -155,7 +156,7 @@ export function MasterChatPage() {
 
   const formatDate = (ts) => {
     if (!ts) return ''
-    const d = new Date(ts)
+    const d = parseUTC(ts)
     const now = new Date()
     const diff = now - d
     if (diff < 86400000) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
@@ -323,7 +324,7 @@ export function MasterChatPage() {
                   {/* Footer: timestamp + copy */}
                   <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.04]">
                     <span className="text-[10px] text-lab-text-faint">
-                      {msg.timestamp && new Date(msg.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      {msg.timestamp && parseUTC(msg.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {msg.role === 'assistant' && (
                       <button

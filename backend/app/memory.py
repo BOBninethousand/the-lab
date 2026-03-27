@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from app.config import settings
 from app.models import MemoryEntry, MemoryCreate, JournalEntry, JournalCreate
@@ -17,7 +17,7 @@ class MemoryManager:
     def add_memory(self, data: MemoryCreate) -> MemoryEntry:
         memory = MemoryEntry(
             id=str(uuid.uuid4()),
-            date=datetime.now().strftime("%Y-%m-%d"),
+            date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             content=data.content,
             tags=data.tags,
             source=data.source,
@@ -63,7 +63,7 @@ class MemoryManager:
         return memories
 
     def create_journal(self, data: JournalCreate) -> JournalEntry:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         journal = JournalEntry(
             id=str(uuid.uuid4()),
             date=today,

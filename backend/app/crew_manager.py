@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from app.config import settings
 from app.models import Crew, CrewCreate
@@ -47,7 +47,7 @@ class CrewManager:
             task_descriptions=data.task_descriptions,
             process_type=data.process_type,
             status="pending",
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             results=None,
         )
 

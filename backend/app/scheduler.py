@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -213,7 +213,7 @@ class SchedulerManager:
 
     def get_calendar(self, days: int = 30) -> List[dict]:
         calendar = {}
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         for job_id, job_config in self.jobs.items():
             if not job_config.get("enabled", True):
@@ -246,7 +246,7 @@ class SchedulerManager:
         next_runs = []
         try:
             trigger = CronTrigger.from_crontab(cron)
-            current = datetime.now()
+            current = datetime.now(timezone.utc)
             for _ in range(5):
                 next_run = trigger.get_next_fire_time(None, current)
                 if next_run:
@@ -394,7 +394,7 @@ class SchedulerManager:
                 job_name=job_config["name"],
                 agent_id=agent_id,
                 agent_name="Unknown",
-                executed_at=datetime.now(),
+                executed_at=datetime.now(timezone.utc),
                 status="failed",
                 result_preview="",
                 error=f"Agent not found (id: {agent_id}). Delete and recreate this job.",
@@ -415,7 +415,7 @@ class SchedulerManager:
             from app.models import DocumentCreate, ReportCreate
             doc = self.document_manager.create_document(
                 DocumentCreate(
-                    title=f"{job_config['name']} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    title=f"{job_config['name']} - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
                     content=response,
                     doc_type="report",
                     agent_id=agent_id,
@@ -425,7 +425,7 @@ class SchedulerManager:
             if self.report_manager:
                 try:
                     self.report_manager.create_report(ReportCreate(
-                        title=f"{job_config['name']} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                        title=f"{job_config['name']} - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
                         content=response,
                         report_type="scheduled",
                         agent_id=agent_id,
@@ -441,14 +441,14 @@ class SchedulerManager:
                 job_name=job_config["name"],
                 agent_id=agent_id,
                 agent_name=agent.name,
-                executed_at=datetime.now(),
+                executed_at=datetime.now(timezone.utc),
                 status="success",
                 result_preview=response[:300],
                 result_document_id=doc.id,
             )
             self._save_execution(execution)
 
-            job_config["last_run"] = datetime.now().isoformat()
+            job_config["last_run"] = datetime.now(timezone.utc).isoformat()
             self._save_jobs()
 
             # Auto-publish to Notion
@@ -476,7 +476,7 @@ class SchedulerManager:
                 job_name=job_config["name"],
                 agent_id=agent_id,
                 agent_name=agent.name,
-                executed_at=datetime.now(),
+                executed_at=datetime.now(timezone.utc),
                 status="failed",
                 result_preview="",
                 error=str(e),

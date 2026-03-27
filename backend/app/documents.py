@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from app.config import settings
 from app.models import Document, DocumentCreate, Report, ReportCreate
@@ -18,7 +18,7 @@ class DocumentManager:
             title=data.title,
             content=data.content,
             doc_type=data.doc_type,
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             agent_id=data.agent_id,
         )
         doc_file = f"{self.documents_dir}/{document.id}.json"
@@ -44,7 +44,7 @@ class DocumentManager:
                 try:
                     with open(filepath, "r") as f:
                         data = json.load(f)
-                        data["created_at"] = datetime.fromisoformat(data["created_at"])
+                        data["created_at"] = datetime.fromisoformat(data["created_at"]).replace(tzinfo=timezone.utc)
                         documents.append(Document(**data))
                 except:
                     continue
@@ -59,7 +59,7 @@ class DocumentManager:
             try:
                 with open(doc_file, "r") as f:
                     data = json.load(f)
-                    data["created_at"] = datetime.fromisoformat(data["created_at"])
+                    data["created_at"] = datetime.fromisoformat(data["created_at"]).replace(tzinfo=timezone.utc)
                     return Document(**data)
             except:
                 pass
@@ -87,7 +87,7 @@ class ReportManager:
         try:
             with open(filepath, "r") as f:
                 data = json.load(f)
-                data["created_at"] = datetime.fromisoformat(data["created_at"])
+                data["created_at"] = datetime.fromisoformat(data["created_at"]).replace(tzinfo=timezone.utc)
                 return Report(**data)
         except:
             return None
@@ -103,7 +103,7 @@ class ReportManager:
             source=data.source,
             starred=data.starred,
             read=False,
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
         )
         self._save_report(report)
         return report
@@ -174,7 +174,7 @@ class ReportManager:
 
     def get_stats(self) -> dict:
         reports = self.list_reports(limit=10000)
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).date()
         by_agent = {}
         by_type = {}
         unread = 0

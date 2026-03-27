@@ -62,7 +62,7 @@ export function ActivityList({ events, isLoading }) {
               {message}
             </span>
             <span className="text-[10px] text-lab-text-faint flex-shrink-0 mt-0.5">
-              {formatDistanceToNow(new Date(event.timestamp || Date.now()))}
+              {formatDistanceToNow(event.timestamp || new Date())}
             </span>
           </div>
         )

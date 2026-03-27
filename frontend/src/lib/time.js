@@ -1,6 +1,14 @@
+export function parseUTC(dateStr) {
+  if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'Z')
+  }
+  return new Date(dateStr)
+}
+
 export function formatDistanceToNow(date) {
   const now = new Date()
-  const seconds = Math.floor((now - date) / 1000)
+  const parsed = date instanceof Date ? date : parseUTC(date)
+  const seconds = Math.floor((now - parsed) / 1000)
 
   if (seconds < 60) return 'now'
   const minutes = Math.floor(seconds / 60)
@@ -14,7 +22,7 @@ export function formatDistanceToNow(date) {
 }
 
 export function formatDate(date) {
-  return new Date(date).toLocaleDateString('en-US', {
+  return parseUTC(date).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric'
@@ -22,7 +30,7 @@ export function formatDate(date) {
 }
 
 export function formatTime(date) {
-  return new Date(date).toLocaleTimeString('en-US', {
+  return parseUTC(date).toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit'
   })

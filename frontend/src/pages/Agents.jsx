@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { X, Send, Trash2, Plus, FileText, Clock, Zap, Bot, Wifi } from 'lucide-react'
 import { AvatarCircle } from '../components/AvatarCircle'
+import { formatDistanceToNow, parseUTC } from '../lib/time'
 import { getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats, createCorrection } from '../lib/api'
 
 const API = import.meta.env.VITE_API_URL || ''
@@ -156,7 +157,7 @@ export function Agents() {
           ? (agentCosts[0]?.timestamp || agentCosts[0]?.logged_at || null)
           : null
         const lastReportTime = lastReport?.created_at || null
-        const times = [lastReportTime, lastCostTime].filter(Boolean).map(t => new Date(t).getTime())
+        const times = [lastReportTime, lastCostTime].filter(Boolean).map(t => parseUTC(t).getTime())
         const lastActive = times.length > 0 ? new Date(Math.max(...times)).toISOString() : null
 
         stats[agent.id] = {
@@ -261,11 +262,7 @@ export function Agents() {
 
   const formatTimeAgo = (timestamp) => {
     if (!timestamp) return 'No activity'
-    const diff = Math.floor((new Date() - new Date(timestamp)) / 1000)
-    if (diff < 60) return 'Just now'
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-    return `${Math.floor(diff / 86400)}d ago`
+    return formatDistanceToNow(timestamp)
   }
 
   const isOpenClawActive = settings.openclaw_llm_active || settings.use_openclaw_for_agents || false

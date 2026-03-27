@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.config import settings
@@ -212,7 +212,7 @@ class SkillManager:
             "builtin": False,
             "params": params or [],
             "steps": steps,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         self._custom[name] = skill
         self._save()

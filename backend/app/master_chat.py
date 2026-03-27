@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from openai import OpenAI
@@ -487,8 +487,8 @@ class MasterChat:
         convo = {
             "id": convo_id,
             "title": title,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
             "messages": [],
         }
         with open(os.path.join(self.CHATS_DIR, f"{convo_id}.json"), "w") as f:
@@ -507,7 +507,7 @@ class MasterChat:
         if not convo:
             return False
         convo["title"] = title
-        convo["updated_at"] = datetime.utcnow().isoformat()
+        convo["updated_at"] = datetime.now(timezone.utc).isoformat()
         with open(os.path.join(self.CHATS_DIR, f"{convo_id}.json"), "w") as f:
             json.dump(convo, f, indent=2)
         return True
@@ -522,14 +522,14 @@ class MasterChat:
             "id": str(uuid.uuid4()),
             "role": role,
             "content": content,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         # Auto-title from first user message
         if convo["title"] == "New Chat":
             first_user = next((m for m in convo["messages"] if m["role"] == "user"), None)
             if first_user:
                 convo["title"] = first_user["content"][:60].strip()
-        convo["updated_at"] = datetime.utcnow().isoformat()
+        convo["updated_at"] = datetime.now(timezone.utc).isoformat()
         with open(os.path.join(self.CHATS_DIR, f"{convo_id}.json"), "w") as f:
             json.dump(convo, f, indent=2)
         return convo_id
@@ -549,7 +549,7 @@ class MasterChat:
             "id": str(uuid.uuid4()),
             "role": role,
             "content": content,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         if len(history) > 100:
             history = history[-100:]

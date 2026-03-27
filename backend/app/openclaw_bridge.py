@@ -11,7 +11,7 @@ import json
 import os
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger("openclaw_bridge")
@@ -155,7 +155,7 @@ class OpenClawBridge:
             role = "operator"
             scopes = ["operator.read", "operator.write", "operator.admin"]
             challenge_ts = (challenge.get("payload") or {}).get("ts")
-            signed_at_ms = int(challenge_ts) if isinstance(challenge_ts, (int, float)) else int(datetime.utcnow().timestamp() * 1000)
+            signed_at_ms = int(challenge_ts) if isinstance(challenge_ts, (int, float)) else int(datetime.now(timezone.utc).timestamp() * 1000)
             platform = "macos"
             device_family = "desktop"
             auth_token_for_sig = self.gateway_token or None
@@ -344,7 +344,7 @@ class OpenClawBridge:
                     **self._sessions.get(session_id, {}),
                     **payload,
                     "last_event": event,
-                    "updated_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
             self._log_activity("session", event, {"session_id": session_id})
         elif event == "approval.request":
@@ -389,7 +389,7 @@ class OpenClawBridge:
             before_msgs = (before.get("payload") or {}).get("messages", []) if isinstance(before, dict) else []
             before_count = len(before_msgs)
 
-            sent_at_ms = int(datetime.utcnow().timestamp() * 1000)
+            sent_at_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
             send_res = await self._send_request("chat.send", {
                 "sessionKey": session_key,
                 "message": full_prompt,
@@ -648,7 +648,7 @@ class OpenClawBridge:
             "category": category,
             "description": description,
             "detail": detail or {},
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self._activity_log.append(entry)
         if len(self._activity_log) > self._max_activity:
