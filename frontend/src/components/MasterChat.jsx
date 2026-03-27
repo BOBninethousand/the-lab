@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { FlaskConical, Send, X, Trash2, Loader2 } from 'lucide-react'
+import { FlaskConical, Send, X, Trash2, Loader2, Copy, Check } from 'lucide-react'
 import { sendMasterChat, getMasterChatHistory, clearMasterChatHistory } from '../lib/api'
 
 export function MasterChat() {
@@ -11,6 +11,7 @@ export function MasterChat() {
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const [copiedId, setCopiedId] = useState(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -133,20 +134,35 @@ export function MasterChat() {
             )}
 
             {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div key={i} className={`group flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
+                  className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed relative ${
                     msg.role === 'user'
                       ? 'bg-lab-accent/15 text-lab-text-primary'
                       : 'bg-lab-elevated text-lab-text-secondary border border-lab-border'
                   }`}
                 >
                   <div className="whitespace-pre-wrap">{msg.content}</div>
-                  {msg.timestamp && (
-                    <div className="text-[9px] text-lab-text-faint mt-1 text-right">
-                      {new Date(msg.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between mt-1">
+                    {msg.timestamp && (
+                      <div className="text-[9px] text-lab-text-faint">
+                        {new Date(msg.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                    {msg.role === 'assistant' && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(msg.content)
+                          setCopiedId(i)
+                          setTimeout(() => setCopiedId(null), 1500)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-lab-text-faint hover:text-lab-text-secondary"
+                        title="Copy response"
+                      >
+                        {copiedId === i ? <Check size={11} className="text-green-400" /> : <Copy size={11} />}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
