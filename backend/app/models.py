@@ -271,7 +271,7 @@ class MasterChatRequest(BaseModel):
 
 class MasterChatConfig(BaseModel):
     provider: str = "openai"  # openai, anthropic, ollama
-    model_name: str = "gpt-4o"
+    model_name: str = "gpt-5.4"
 
 
 class StrategyCreate(BaseModel):

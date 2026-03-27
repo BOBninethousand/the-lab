@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { FlaskConical, Send, X, Trash2, Loader2 } from 'lucide-react'
 import { sendMasterChat, getMasterChatHistory, clearMasterChatHistory } from '../lib/api'
 
 export function MasterChat() {
+  const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+
+  // Hide on Office page — Claw3D has its own chat
+  if (location.pathname === '/office') return null
 
   useEffect(() => {
     if (isOpen) {

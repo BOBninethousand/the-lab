@@ -247,7 +247,7 @@ class MasterChat:
         if os.path.isfile(CONFIG_FILE):
             with open(CONFIG_FILE) as f:
                 return json.load(f)
-        return {"provider": "openai", "model_name": "gpt-4o"}
+        return {"provider": "openai", "model_name": "gpt-5.4"}
 
     def update_config(self, data: dict) -> dict:
         config = self.get_config()

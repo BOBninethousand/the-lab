@@ -5,7 +5,7 @@ import { getSettings, getMasterChatConfig, updateMasterChatConfig } from '../lib
 export function Settings() {
   const [settings, setSettings] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [mcConfig, setMcConfig] = useState({ provider: 'openai', model_name: 'gpt-4o' })
+  const [mcConfig, setMcConfig] = useState({ provider: 'openai', model_name: 'gpt-5.4' })
   const [mcSaved, setMcSaved] = useState(false)
 
   useEffect(() => {
