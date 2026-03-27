@@ -85,16 +85,39 @@ class StrategyManager:
             return {}
 
         agent_ids = set(strategy.get("agent_ids", []))
-        schedule_ids = set(strategy.get("schedule_ids", []))
+        manual_schedule_ids = set(strategy.get("schedule_ids", []))
+
+        # Auto-detect schedules for assigned agents
+        all_jobs = scheduler_manager.list_jobs()
+        detected_schedules = []
+        all_schedule_ids = set(manual_schedule_ids)
+        for job in all_jobs:
+            if job.get("agent_id") in agent_ids:
+                all_schedule_ids.add(job["id"])
+                detected_schedules.append({
+                    "id": job["id"],
+                    "name": job.get("name", "Unnamed"),
+                    "agent_id": job.get("agent_id"),
+                    "cron": job.get("human_schedule") or job.get("cron_expression", ""),
+                    "enabled": job.get("enabled", True),
+                })
+            elif job.get("id") in manual_schedule_ids:
+                detected_schedules.append({
+                    "id": job["id"],
+                    "name": job.get("name", "Unnamed"),
+                    "agent_id": job.get("agent_id"),
+                    "cron": job.get("human_schedule") or job.get("cron_expression", ""),
+                    "enabled": job.get("enabled", True),
+                })
 
         # Count reports by linked agents (list_reports returns Pydantic Report objects)
         all_reports = report_manager.list_reports()
         agent_reports = [r for r in all_reports if r.agent_id in agent_ids]
 
-        # Count job executions for linked schedules
+        # Count job executions for all discovered schedules
         total_executions = 0
         successful_executions = 0
-        for job_id in schedule_ids:
+        for job_id in all_schedule_ids:
             execs = scheduler_manager.get_executions(job_id, limit=100)
             total_executions += len(execs)
             successful_executions += sum(1 for e in execs if e.status == "success")
@@ -113,5 +136,6 @@ class StrategyManager:
             "executions_total": total_executions,
             "executions_successful": successful_executions,
             "agent_count": len(agent_ids),
-            "schedule_count": len(schedule_ids),
+            "schedule_count": len(all_schedule_ids),
+            "schedules": detected_schedules,
         }

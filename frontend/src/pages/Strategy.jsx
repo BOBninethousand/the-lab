@@ -171,14 +171,10 @@ export function Strategy() {
     return a ? a.name : id.slice(0, 8)
   }
 
-  const getScheduleName = (id) => {
-    const s = schedules.find(s => s.id === id)
-    return s ? s.name : id.slice(0, 8)
-  }
-
   const activeCount = strategies.filter(s => s.status === 'active').length
   const totalAgentsLinked = new Set(strategies.flatMap(s => s.agent_ids || [])).size
-  const totalSchedulesLinked = new Set(strategies.flatMap(s => s.schedule_ids || [])).size
+  // Use auto-detected schedule counts from progress data when available
+  const totalSchedulesLinked = Object.values(progress).reduce((sum, p) => sum + (p.schedule_count || 0), 0)
 
   return (
     <div className="space-y-8">
@@ -358,7 +354,6 @@ export function Strategy() {
             const isExpanded = expandedId === strategy.id
             const prog = progress[strategy.id]
             const agentNames = (strategy.agent_ids || []).map(getAgentName)
-            const schedNames = (strategy.schedule_ids || []).map(getScheduleName)
 
             return (
               <div key={strategy.id} className="card p-0 overflow-hidden">
@@ -426,25 +421,49 @@ export function Strategy() {
                       </div>
                     )}
 
-                    {/* Linked schedules */}
-                    {schedNames.length > 0 && (
+                    {/* Schedules (auto-detected from agents + manually linked) */}
+                    {prog?.schedules?.length > 0 && (
                       <div>
                         <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
-                          Linked Schedules
+                          Schedules
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {schedNames.map((name, i) => (
-                            <span key={i} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-lab-elevated text-lab-text-secondary border border-lab-border">
+                          {prog.schedules.map(sched => (
+                            <button
+                              key={sched.id}
+                              onClick={() => navigate('/calendar')}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs bg-lab-elevated text-lab-text-secondary border border-lab-border hover:bg-white/[0.03] transition-subtle"
+                            >
                               <Calendar size={12} className="text-lab-text-muted" />
-                              {name}
-                            </span>
+                              <span>{sched.name}</span>
+                              <span className="text-[10px] text-lab-text-faint">{sched.cron}</span>
+                              {!sched.enabled && (
+                                <span className="px-1 py-0.5 rounded text-[9px] text-lab-text-muted bg-white/[0.05]">OFF</span>
+                              )}
+                            </button>
                           ))}
                         </div>
                       </div>
                     )}
 
+                    {/* No schedules hint */}
+                    {prog && prog.schedule_count === 0 && agentNames.length > 0 && (
+                      <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                        <p className="text-xs text-amber-400/80">
+                          No scheduled jobs found for {agentNames.join(' or ')}. Create jobs in Calendar so agents produce reports automatically.
+                        </p>
+                        <button
+                          onClick={() => navigate('/calendar')}
+                          className="mt-2 flex items-center gap-1.5 px-3 py-1 text-[11px] font-medium rounded-md bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-subtle"
+                        >
+                          <Calendar size={12} />
+                          Go to Calendar
+                        </button>
+                      </div>
+                    )}
+
                     {/* Progress metrics */}
-                    {prog && (
+                    {prog && (prog.reports_count > 0 || prog.executions_total > 0) && (
                       <div>
                         <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
                           Progress
@@ -493,13 +512,13 @@ export function Strategy() {
                           View Reports {prog ? `(${prog.reports_count})` : ''}
                         </button>
                       )}
-                      {schedNames.length > 0 && (
+                      {prog?.schedule_count > 0 && (
                         <button
                           onClick={() => navigate('/calendar')}
                           className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md bg-white/[0.04] text-lab-text-secondary hover:bg-white/[0.06] transition-subtle"
                         >
                           <Calendar size={12} />
-                          View Schedules
+                          View Schedules ({prog.schedule_count})
                         </button>
                       )}
                     </div>
