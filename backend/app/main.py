@@ -1406,6 +1406,49 @@ async def master_chat_tools():
     }
 
 
+# --- MASTER CHAT CONVERSATION ENDPOINTS ---
+
+@app.get("/api/master-chat/conversations")
+async def list_conversations():
+    return master_chat.list_conversations()
+
+@app.post("/api/master-chat/conversations")
+async def create_conversation(data: dict = Body(default={})):
+    title = data.get("title", "New Chat")
+    convo = master_chat.create_conversation(title)
+    return convo
+
+@app.get("/api/master-chat/conversations/{convo_id}")
+async def get_conversation(convo_id: str):
+    convo = master_chat.get_conversation(convo_id)
+    if not convo:
+        raise HTTPException(404, "Conversation not found")
+    return convo
+
+@app.delete("/api/master-chat/conversations/{convo_id}")
+async def delete_conversation(convo_id: str):
+    if master_chat.delete_conversation(convo_id):
+        return {"status": "deleted"}
+    raise HTTPException(404, "Conversation not found")
+
+@app.patch("/api/master-chat/conversations/{convo_id}")
+async def rename_conversation(convo_id: str, data: dict = Body(...)):
+    if master_chat.rename_conversation(convo_id, data.get("title", "")):
+        return {"status": "renamed"}
+    raise HTTPException(404, "Conversation not found")
+
+@app.post("/api/master-chat/conversations/{convo_id}/chat")
+async def chat_in_conversation(convo_id: str, data: MasterChatRequest):
+    try:
+        result = await asyncio.wait_for(
+            master_chat.chat_in_conversation(convo_id, data.message),
+            timeout=90.0,
+        )
+        return result
+    except asyncio.TimeoutError:
+        return {"convo_id": convo_id, "response": "That request took too long (>90s). Try a simpler prompt."}
+
+
 # --- SKILLS ENDPOINTS ---
 
 @app.get("/api/skills")

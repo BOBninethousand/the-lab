@@ -388,6 +388,48 @@ export async function updateMasterChatConfig(data) {
   return api('/api/master-chat/config', { method: 'PATCH', body: JSON.stringify(data) })
 }
 
+// --- Multi-conversation API ---
+
+export async function listConversations() {
+  return api('/api/master-chat/conversations')
+}
+
+export async function createConversation(title = 'New Chat') {
+  return api('/api/master-chat/conversations', { method: 'POST', body: JSON.stringify({ title }) })
+}
+
+export async function getConversation(convoId) {
+  return api(`/api/master-chat/conversations/${convoId}`)
+}
+
+export async function deleteConversation(convoId) {
+  return api(`/api/master-chat/conversations/${convoId}`, { method: 'DELETE' })
+}
+
+export async function renameConversation(convoId, title) {
+  return api(`/api/master-chat/conversations/${convoId}`, { method: 'PATCH', body: JSON.stringify({ title }) })
+}
+
+export async function chatInConversation(convoId, message) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 95000)
+  try {
+    const result = await api(`/api/master-chat/conversations/${convoId}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    return result
+  } catch (err) {
+    clearTimeout(timer)
+    if (err.name === 'AbortError') {
+      return { convo_id: convoId, response: 'Request timed out. Try a shorter prompt or break it into steps.' }
+    }
+    throw err
+  }
+}
+
 export async function getSkills() {
   return api('/api/skills')
 }

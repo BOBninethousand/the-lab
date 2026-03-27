@@ -397,15 +397,107 @@ class MasterChat:
             json.dump(config, f, indent=2)
         return config
 
-    # --- Chat History ---
+    # --- Chat History (multi-conversation) ---
 
+    CHATS_DIR = os.path.join(DATA_DIR, "chats")
+
+    def _ensure_chats_dir(self):
+        os.makedirs(self.CHATS_DIR, exist_ok=True)
+
+    def list_conversations(self) -> list:
+        """List all conversations sorted by last update."""
+        self._ensure_chats_dir()
+        convos = []
+        for fname in os.listdir(self.CHATS_DIR):
+            if fname.endswith(".json"):
+                try:
+                    with open(os.path.join(self.CHATS_DIR, fname)) as f:
+                        data = json.load(f)
+                    convos.append({
+                        "id": data.get("id", fname.replace(".json", "")),
+                        "title": data.get("title", "New Chat"),
+                        "created_at": data.get("created_at", ""),
+                        "updated_at": data.get("updated_at", ""),
+                        "message_count": len(data.get("messages", [])),
+                    })
+                except Exception:
+                    pass
+        convos.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
+        return convos
+
+    def get_conversation(self, convo_id: str) -> dict:
+        """Get a full conversation with messages."""
+        self._ensure_chats_dir()
+        path = os.path.join(self.CHATS_DIR, f"{convo_id}.json")
+        if os.path.isfile(path):
+            with open(path) as f:
+                return json.load(f)
+        return None
+
+    def create_conversation(self, title: str = "New Chat") -> dict:
+        """Create a new empty conversation."""
+        self._ensure_chats_dir()
+        convo_id = str(uuid.uuid4())
+        convo = {
+            "id": convo_id,
+            "title": title,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            "messages": [],
+        }
+        with open(os.path.join(self.CHATS_DIR, f"{convo_id}.json"), "w") as f:
+            json.dump(convo, f, indent=2)
+        return convo
+
+    def delete_conversation(self, convo_id: str) -> bool:
+        path = os.path.join(self.CHATS_DIR, f"{convo_id}.json")
+        if os.path.isfile(path):
+            os.remove(path)
+            return True
+        return False
+
+    def rename_conversation(self, convo_id: str, title: str) -> bool:
+        convo = self.get_conversation(convo_id)
+        if not convo:
+            return False
+        convo["title"] = title
+        convo["updated_at"] = datetime.utcnow().isoformat()
+        with open(os.path.join(self.CHATS_DIR, f"{convo_id}.json"), "w") as f:
+            json.dump(convo, f, indent=2)
+        return True
+
+    def _save_message_to_convo(self, convo_id: str, role: str, content: str):
+        """Save a message to a specific conversation."""
+        convo = self.get_conversation(convo_id)
+        if not convo:
+            convo = self.create_conversation()
+            convo_id = convo["id"]
+        convo["messages"].append({
+            "id": str(uuid.uuid4()),
+            "role": role,
+            "content": content,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        # Auto-title from first user message
+        if convo["title"] == "New Chat":
+            first_user = next((m for m in convo["messages"] if m["role"] == "user"), None)
+            if first_user:
+                convo["title"] = first_user["content"][:60].strip()
+        convo["updated_at"] = datetime.utcnow().isoformat()
+        with open(os.path.join(self.CHATS_DIR, f"{convo_id}.json"), "w") as f:
+            json.dump(convo, f, indent=2)
+        return convo_id
+
+    # Keep backward-compat methods for the floating chat widget
     def get_history(self) -> list:
+        """Legacy: get flat history from the old single file."""
         if os.path.isfile(CHAT_FILE):
             with open(CHAT_FILE) as f:
                 return json.load(f)
         return []
 
     def _save_message(self, role: str, content: str):
+        """Legacy: save to flat history file (used by floating widget)."""
         history = self.get_history()
         history.append({
             "id": str(uuid.uuid4()),
@@ -413,13 +505,13 @@ class MasterChat:
             "content": content,
             "timestamp": datetime.utcnow().isoformat(),
         })
-        # Keep last 100 messages
         if len(history) > 100:
             history = history[-100:]
         with open(CHAT_FILE, "w") as f:
             json.dump(history, f, indent=2)
 
     def clear_history(self):
+        """Legacy: clear the flat history file."""
         if os.path.isfile(CHAT_FILE):
             os.remove(CHAT_FILE)
 
@@ -1162,3 +1254,126 @@ class MasterChat:
             error_msg = f"Master Chat error: {str(e)}"
             self._save_message("assistant", error_msg)
             return error_msg
+
+    async def chat_in_conversation(self, convo_id: str, user_message: str) -> dict:
+        """Process a message within a specific conversation. Returns {convo_id, response}."""
+        config = self.get_config()
+        provider = config.get("provider", "openai")
+        model = config.get("model_name", "gpt-5.4")
+
+        # Build memory context
+        memory_context = ""
+        try:
+            from app.memory_engine import build_context
+            memory_context = await build_context(
+                "master_chat", user_message,
+                self.knowledge_manager, self.agent_memory_manager,
+                self.correction_manager,
+            )
+        except Exception:
+            pass
+
+        # Build dynamic agent list
+        agents = self.agent_manager.list_agents()
+        agent_list = "\n".join(f"- **{a.name}** — {a.role}" for a in agents)
+        system_prompt = SYSTEM_PROMPT.replace("{agent_list}", agent_list or "No agents configured yet.")
+        system_prompt = system_prompt.replace("{memory_context}", memory_context or "No memory context available.")
+
+        # Get conversation history
+        convo = self.get_conversation(convo_id)
+        if not convo:
+            convo = self.create_conversation()
+            convo_id = convo["id"]
+
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in convo.get("messages", [])[-10:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        # Save user message
+        convo_id = self._save_message_to_convo(convo_id, "user", user_message)
+
+        # Call LLM (same logic as chat() method)
+        try:
+            logger.info(f"Master Chat: provider={provider}, model={model}, tools={len(TOOLS)}, convo={convo_id[:8]}")
+
+            if provider == "openai":
+                client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=90.0)
+            elif provider == "anthropic":
+                client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=90.0)
+            else:
+                client = OpenAI(api_key="ollama", base_url=settings.OLLAMA_BASE_URL + "/v1", timeout=90.0)
+
+            action_keywords = [
+                "create", "make", "add", "set up", "schedule", "delete", "remove",
+                "run", "execute", "list", "show", "check", "find", "search",
+                "publish", "correct", "rate", "update", "toggle", "pause", "resume",
+                "status", "how much", "spending", "cost", "star", "unstar",
+                "skill", "deploy", "briefing", "audit", "onboard",
+            ]
+            msg_lower = user_message.lower()
+            is_action = any(kw in msg_lower for kw in action_keywords)
+            tool_mode = "required" if is_action else "auto"
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice=tool_mode,
+            )
+
+            assistant_msg = response.choices[0].message
+
+            if assistant_msg.tool_calls:
+                logger.info(f"Master Chat: GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
+                tool_results = []
+                for tool_call in assistant_msg.tool_calls:
+                    fn_name = tool_call.function.name
+                    fn_args = json.loads(tool_call.function.arguments)
+                    logger.info(f"Master Chat: executing {fn_name}({json.dumps(fn_args)[:200]})")
+                    result = await self._execute_tool(fn_name, fn_args)
+                    logger.info(f"Master Chat: {fn_name} result: {result[:200]}")
+                    tool_results.append({
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "content": result,
+                    })
+
+                messages.append(assistant_msg.model_dump())
+                messages.extend(tool_results)
+
+                final_response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                )
+                final_text = final_response.choices[0].message.content or ""
+
+                total_input = (response.usage.prompt_tokens if response.usage else 0) + \
+                              (final_response.usage.prompt_tokens if final_response.usage else 0)
+                total_output = (response.usage.completion_tokens if response.usage else 0) + \
+                               (final_response.usage.completion_tokens if final_response.usage else 0)
+                self.cost_tracker.log_call(
+                    agent_id="master_chat", agent_name="Master Chat",
+                    provider=provider, model=model,
+                    input_tokens=total_input, output_tokens=total_output,
+                    source="master_chat", task_type="orchestration",
+                )
+            else:
+                logger.info(f"Master Chat: GPT returned text only (no tool calls).")
+                final_text = assistant_msg.content or ""
+                if response.usage:
+                    self.cost_tracker.log_call(
+                        agent_id="master_chat", agent_name="Master Chat",
+                        provider=provider, model=model,
+                        input_tokens=response.usage.prompt_tokens,
+                        output_tokens=response.usage.completion_tokens,
+                        source="master_chat", task_type="chat",
+                    )
+
+            self._save_message_to_convo(convo_id, "assistant", final_text)
+            return {"convo_id": convo_id, "response": final_text}
+
+        except Exception as e:
+            error_msg = f"Master Chat error: {str(e)}"
+            self._save_message_to_convo(convo_id, "assistant", error_msg)
+            return {"convo_id": convo_id, "response": error_msg}
