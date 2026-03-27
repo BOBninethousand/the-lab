@@ -263,10 +263,19 @@ class MasterChat:
     # --- Config ---
 
     def get_config(self) -> dict:
+        default = {"provider": "openai", "model_name": "gpt-5.4"}
         if os.path.isfile(CONFIG_FILE):
-            with open(CONFIG_FILE) as f:
-                return json.load(f)
-        return {"provider": "openai", "model_name": "gpt-5.4"}
+            try:
+                with open(CONFIG_FILE) as f:
+                    config = json.load(f)
+                # Auto-fix stale gpt-4o config that causes 502
+                if config.get("model_name") == "gpt-4o":
+                    config["model_name"] = "gpt-5.4"
+                    self.update_config(config)
+                return config
+            except Exception:
+                return default
+        return default
 
     def update_config(self, data: dict) -> dict:
         config = self.get_config()
@@ -328,10 +337,10 @@ class MasterChat:
         """Execute a tool call and return the result as a string."""
         try:
             if tool_name == "search_knowledge":
-                results = self.knowledge_manager.search(args["query"], top_k=5)
+                results = self.knowledge_manager.get_all(search=args["query"])
                 if not results:
                     return "No knowledge entries found for that query."
-                return json.dumps([{"title": r.get("title", ""), "content": r.get("content", "")[:200]} for r in results], indent=2)
+                return json.dumps([{"title": r.title, "content": r.content[:200]} for r in results[:5]], indent=2)
 
             elif tool_name == "create_agent":
                 from app.models import AgentCreate
@@ -400,21 +409,24 @@ class MasterChat:
                 agent = self._resolve_agent(args["agent_name"])
                 if not agent:
                     return f"Agent '{args['agent_name']}' not found."
-                job = self.scheduler_manager.create_job_simple({
-                    "name": args["name"],
-                    "description": args.get("name", ""),
-                    "frequency": args.get("frequency", "daily"),
-                    "time": args.get("time", "09:00"),
-                    "prompt": args["prompt"],
-                    "agent_id": agent.id,
-                })
-                return f"Schedule created: '{args['name']}' — {args.get('frequency', 'daily')} at {args.get('time', '09:00')} with {agent.name}."
+                from app.models import ScheduledJobCreateSimple
+                job_data = ScheduledJobCreateSimple(
+                    name=args["name"],
+                    description=args.get("name", ""),
+                    frequency=args.get("frequency", "daily"),
+                    time=args.get("time", "09:00"),
+                    prompt=args["prompt"],
+                    agent_id=agent.id,
+                )
+                job = self.scheduler_manager.add_job_simple(job_data)
+                return f"Schedule created: '{args['name']}' — {args.get('frequency', 'daily')} at {args.get('time', '09:00')} with {agent.name}. Job ID: {job.id}"
 
             elif tool_name == "run_job_now":
                 job = self._resolve_job(args["job_name"])
                 if not job:
                     return f"Job '{args['job_name']}' not found. Check Calendar for available jobs."
-                result = await self.scheduler_manager.run_job_now(job["id"])
+                import asyncio
+                result = await asyncio.to_thread(self.scheduler_manager.run_job_now, job["id"])
                 preview = str(result)[:500] if result else "Job completed (no output)."
                 return f"Job '{job['name']}' executed. Result:\n{preview}"
 
@@ -430,12 +442,13 @@ class MasterChat:
                 return "\n".join(items)
 
             elif tool_name == "add_knowledge":
-                entry = self.knowledge_manager.add({
-                    "title": args["title"],
-                    "content": args["content"],
-                    "category": args.get("category", "fact"),
-                    "tags": [],
-                })
+                from app.models import KnowledgeCreate
+                entry = await self.knowledge_manager.add(KnowledgeCreate(
+                    title=args["title"],
+                    content=args["content"],
+                    category=args.get("category", "fact"),
+                    tags=[],
+                ))
                 return f"Knowledge added: '{args['title']}' ({args.get('category', 'fact')})"
 
             elif tool_name == "get_lab_status":
