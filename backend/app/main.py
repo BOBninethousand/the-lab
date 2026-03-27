@@ -1120,8 +1120,10 @@ async def _handle_gateway_rpc(ws: WebSocket, raw: str) -> bool:
     if method == "config.get":
         await ws.send_text(json.dumps({
             "type": "res", "id": req_id, "ok": True,
-            "path": "/root/.openclaw/openclaw.json",
-            "exists": True, "hash": "lab-config",
+            "payload": {
+                "path": "/root/.openclaw/openclaw.json",
+                "exists": True, "hash": "lab-config",
+            },
         }))
         return True
 
@@ -1157,8 +1159,10 @@ async def _handle_gateway_rpc(ws: WebSocket, raw: str) -> bool:
         slug = name.lower().replace(" ", "-")
         await ws.send_text(json.dumps({
             "type": "res", "id": req_id, "ok": True,
-            "agentId": slug, "name": name,
-            "workspace": workspace or f"/root/.openclaw/workspace-{slug}",
+            "payload": {
+                "agentId": slug, "name": name,
+                "workspace": workspace or f"/root/.openclaw/workspace-{slug}",
+            },
         }))
         return True
 
