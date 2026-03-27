@@ -64,6 +64,15 @@ export function Layout({ children }) {
         setToast(`Skill "${skill}" completed — ${ok}/${total} steps`)
         setTimeout(() => setToast(null), 5000)
       }
+      if (latest.type === 'agent_collaboration' && latest.data) {
+        if (latest.data.action === 'started') {
+          setToast(`Collaboration started: ${latest.data.agent_names.join(', ')} working on "${latest.data.task}"`)
+          setTimeout(() => setToast(null), 5000)
+        } else if (latest.data.action === 'completed') {
+          setToast(`Collaboration complete: ${latest.data.agent_names.join(', ')} finished`)
+          setTimeout(() => setToast(null), 5000)
+        }
+      }
     }
   }, [events])
 

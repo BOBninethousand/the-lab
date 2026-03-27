@@ -45,7 +45,8 @@ const ZONE_VISITOR_POS = {
   ],
 }
 
-function getAgentZone(agent) {
+function getAgentZone(agent, collaboration) {
+  if (collaboration?.agents?.includes(agent.name)) return 'meeting'
   if (agent.status !== 'working') return 'work'
   const task = (agent.current_task || '').toLowerCase()
   if (task.includes('crew') || task.includes('meeting') || task.includes('collaborate')) return 'meeting'
@@ -59,6 +60,7 @@ export function OfficeCss() {
   const [agents, setAgents] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedAgent, setSelectedAgent] = useState(null)
+  const [collaboration, setCollaboration] = useState(null)
   const { events } = useWebSocket()
   const { zoom, panX, panY, isDragging, reset, viewportRef, wasDragging, handlers } = useOfficeCamera()
 
@@ -91,6 +93,14 @@ export function OfficeCss() {
       if (lastEvent.type === 'agent_deleted' && lastEvent.data?.id) {
         setAgents(prev => prev.filter(a => a.id !== lastEvent.data.id))
       }
+      if (lastEvent.type === 'agent_collaboration' && lastEvent.data) {
+        const { action, agent_names, collaboration_id } = lastEvent.data
+        if (action === 'started') {
+          setCollaboration({ id: collaboration_id, agents: agent_names })
+        } else if (action === 'completed') {
+          setTimeout(() => setCollaboration(null), 3000)
+        }
+      }
     }
   }, [events])
 
@@ -105,7 +115,7 @@ export function OfficeCss() {
   // Compute zones for each agent
   const agentZones = {}
   agents.forEach((agent, idx) => {
-    agentZones[agent.id] = { zone: getAgentZone(agent), homeIdx: idx }
+    agentZones[agent.id] = { zone: getAgentZone(agent, collaboration), homeIdx: idx }
   })
 
   const activeCount = agents.filter(a => a.status === 'working').length
@@ -141,6 +151,21 @@ export function OfficeCss() {
             {activeCount} ACTIVE
           </span>
         </div>
+
+        {collaboration && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg animate-pulse"
+            style={{
+              background: 'rgba(16,185,129,0.1)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(16,185,129,0.2)',
+            }}>
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[10px] text-emerald-400"
+              style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              COLLABORATING: {collaboration.agents.join(' + ')}
+            </span>
+          </div>
+        )}
 
         {/* Camera controls */}
         <div className="flex items-center gap-1 px-2 py-1 rounded-lg"

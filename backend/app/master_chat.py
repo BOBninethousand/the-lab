@@ -55,6 +55,8 @@ You CAN do all of these right now:
 - **Get Lab status** → get_lab_status()
 - **Run a skill (multi-step workflow)** → execute_skill(skill_name=..., params={...})
 - **List/create/delete skills** → manage_skills(action="list|create|delete|get")
+- **Collaborate across agents** → collaborate(task=..., agents=[{agent_name, instruction}], mode="sequential"|"parallel")
+- **Execute a strategy** → execute_strategy(strategy_id=..., task=...)
 
 ## Available Skills (multi-step workflows)
 - **deploy_agent** — Create agent + schedule + first run (params: name, role, goal, backstory, prompt, frequency, time)
@@ -68,6 +70,8 @@ You CAN do all of these right now:
 - If the user doesn't specify an agent, choose the best one: Scout for research/leads, Quill for content/writing, Forge for tech, Radar for outreach/sales.
 - Chain multiple tools when needed (e.g., create agent → create schedule → run job — all in one turn).
 - For multi-step workflows, prefer using skills (execute_skill) over chaining tools manually.
+- When a task needs multiple specialists, use collaborate() instead of calling chat_with_agent multiple times. This shows each agent's contribution as a group conversation.
+- When the user asks to execute/run a strategy, use execute_strategy().
 - Always explain what you did and what happened.
 - Use British English. Be direct, no fluff.
 - Apply Hormozi's priority framework: (1) Revenue (2) Credibility/proof (3) Distribution (4) Product strength.
@@ -105,6 +109,33 @@ TOOLS = [
                     "message": {"type": "string", "description": "The task or question for the agent"},
                 },
                 "required": ["agent_name", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "collaborate",
+            "description": "Coordinate multiple agents on a task. Each agent's response is visible. Use for tasks needing multiple specialists. Agents work sequentially (each sees prior agents' output) or in parallel.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "The overall task description"},
+                    "agents": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "agent_name": {"type": "string"},
+                                "instruction": {"type": "string", "description": "Specific instruction for this agent"},
+                            },
+                            "required": ["agent_name", "instruction"],
+                        },
+                        "description": "Agents to involve, in execution order",
+                    },
+                    "mode": {"type": "string", "enum": ["sequential", "parallel"], "description": "Sequential (default): each agent sees prior output. Parallel: all agents work independently."},
+                },
+                "required": ["task", "agents"],
             },
         },
     },
@@ -238,6 +269,21 @@ TOOLS = [
                     "status": {"type": "string", "enum": ["active", "paused", "completed"], "description": "Status (update only)"},
                 },
                 "required": ["action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_strategy",
+            "description": "Execute a strategy by coordinating its assigned agents on the strategy's approach. Triggers a multi-agent collaboration.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "strategy_id": {"type": "string", "description": "Strategy ID to execute"},
+                    "task": {"type": "string", "description": "Specific task or prompt for this execution run"},
+                },
+                "required": ["strategy_id", "task"],
             },
         },
     },
@@ -1118,6 +1164,151 @@ class MasterChat:
 
                 return f"Unknown manage_skills action: {action}"
 
+            # --- Collaboration ---
+
+            elif tool_name == "collaborate":
+                task = args["task"]
+                agent_specs = args.get("agents", [])
+                mode = args.get("mode", "sequential")
+
+                if not agent_specs:
+                    return "No agents specified for collaboration."
+
+                # Resolve all agents upfront
+                resolved = []
+                for spec in agent_specs:
+                    agent = self._resolve_agent(spec["agent_name"])
+                    if not agent:
+                        return f"Agent '{spec['agent_name']}' not found."
+                    resolved.append((agent, spec["instruction"]))
+
+                collaboration_id = str(uuid.uuid4())[:8]
+                agent_names = [a.name for a, _ in resolved]
+
+                # Broadcast collaboration start
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("agent_collaboration", {
+                        "action": "started",
+                        "collaboration_id": collaboration_id,
+                        "task": task[:100],
+                        "agent_names": agent_names,
+                        "mode": mode,
+                    })
+
+                results = []
+                prev_context = ""
+
+                if mode == "parallel":
+                    import asyncio
+
+                    async def _run_agent(agent, instruction):
+                        full_msg = f"[Collaboration Task: {task}]\n\n{instruction}"
+                        self.agent_manager.update_status(agent.id, "working", f"Collaborating: {task[:40]}")
+                        if self.ws_manager:
+                            await self.ws_manager.broadcast("agent_status", {
+                                **agent.model_dump(mode="json"),
+                                "status": "working",
+                                "current_task": f"Collaborating: {task[:40]}",
+                            })
+                        response = await self.agent_manager.chat_async(agent.id, full_msg)
+                        self.agent_manager.update_status(agent.id, "idle", None)
+                        if self.ws_manager:
+                            await self.ws_manager.broadcast("agent_status", {
+                                **agent.model_dump(mode="json"),
+                                "status": "idle", "current_task": None,
+                            })
+                        return (agent.name, response)
+
+                    parallel_results = await asyncio.gather(
+                        *[_run_agent(a, instr) for a, instr in resolved]
+                    )
+                    for name, response in parallel_results:
+                        results.append({"agent": name, "response": response})
+                        if self.ws_manager:
+                            await self.ws_manager.broadcast("agent_collaboration", {
+                                "action": "agent_responded",
+                                "collaboration_id": collaboration_id,
+                                "agent_name": name,
+                                "response_preview": response[:200],
+                            })
+
+                else:  # sequential
+                    for i, (agent, instruction) in enumerate(resolved):
+                        # Build message with handoff context
+                        parts = [f"[Collaboration Task: {task}]"]
+                        if prev_context:
+                            parts.append(f"\n[Previous agents' work so far:]\n{prev_context}")
+                        parts.append(f"\n[Your instruction:] {instruction}")
+                        full_msg = "\n".join(parts)
+
+                        self.agent_manager.update_status(agent.id, "working", f"Collaborating: {task[:40]}")
+                        if self.ws_manager:
+                            await self.ws_manager.broadcast("agent_status", {
+                                **agent.model_dump(mode="json"),
+                                "status": "working",
+                                "current_task": f"Collaborating: {task[:40]}",
+                            })
+
+                        response = await self.agent_manager.chat_async(agent.id, full_msg)
+
+                        self.agent_manager.update_status(agent.id, "idle", None)
+                        if self.ws_manager:
+                            await self.ws_manager.broadcast("agent_status", {
+                                **agent.model_dump(mode="json"),
+                                "status": "idle", "current_task": None,
+                            })
+                            await self.ws_manager.broadcast("agent_collaboration", {
+                                "action": "agent_responded",
+                                "collaboration_id": collaboration_id,
+                                "agent_name": agent.name,
+                                "response_preview": response[:200],
+                            })
+
+                        results.append({"agent": agent.name, "response": response})
+                        # Build handoff context for next agent
+                        prev_context += f"\n\n**{agent.name}:**\n{response[:1500]}"
+
+                # Broadcast completion
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("agent_collaboration", {
+                        "action": "completed",
+                        "collaboration_id": collaboration_id,
+                        "agent_names": agent_names,
+                        "result_count": len(results),
+                    })
+
+                # Format as group conversation
+                output_parts = [f"**Collaboration: {task}** ({mode} mode, {len(results)} agents)\n"]
+                for r in results:
+                    output_parts.append(f"---\n**{r['agent']}:**\n{r['response']}\n")
+                return "\n".join(output_parts)
+
+            elif tool_name == "execute_strategy":
+                strategy = self.strategy_manager.get(args["strategy_id"])
+                if not strategy:
+                    return f"Strategy '{args['strategy_id']}' not found."
+
+                agent_ids = strategy.get("agent_ids", [])
+                if not agent_ids:
+                    return f"Strategy '{strategy['title']}' has no agents assigned."
+
+                # Build agent specs from strategy
+                agent_specs = []
+                for aid in agent_ids:
+                    agent = self._resolve_agent_by_id(aid)
+                    if agent:
+                        agent_specs.append({
+                            "agent_name": agent.name,
+                            "instruction": f"Execute your part of the strategy: {strategy.get('approach', strategy['title'])}. Focus on your speciality as {agent.role}.",
+                        })
+
+                # Delegate to collaborate tool
+                return await self._execute_tool("collaborate", {
+                    "task": f"Strategy: {strategy['title']} — {args['task']}",
+                    "agents": agent_specs,
+                    "mode": "sequential",
+                })
+
             else:
                 return f"Unknown tool: {tool_name}"
 
@@ -1180,6 +1371,7 @@ class MasterChat:
                 "publish", "correct", "rate", "update", "toggle", "pause", "resume",
                 "status", "how much", "spending", "cost", "star", "unstar",
                 "skill", "deploy", "briefing", "audit", "onboard",
+                "collaborate", "together", "strategy",
             ]
             msg_lower = user_message.lower()
             is_action = any(kw in msg_lower for kw in action_keywords)
@@ -1310,6 +1502,7 @@ class MasterChat:
                 "publish", "correct", "rate", "update", "toggle", "pause", "resume",
                 "status", "how much", "spending", "cost", "star", "unstar",
                 "skill", "deploy", "briefing", "audit", "onboard",
+                "collaborate", "together", "strategy",
             ]
             msg_lower = user_message.lower()
             is_action = any(kw in msg_lower for kw in action_keywords)
