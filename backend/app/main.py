@@ -23,6 +23,8 @@ from app.models import (
     ReportCreate,
     KnowledgeCreate,
     CorrectionCreate,
+    StrategyCreate,
+    StrategyUpdate,
 )
 from app.websocket_manager import ws_manager
 from app.agents import AgentManager
@@ -41,6 +43,7 @@ from app.memory_engine import (
     get_memory_stats,
 )
 from app.notion_bridge import NotionBridge
+from app.strategy_manager import StrategyManager
 
 # Initialize managers
 agent_manager = AgentManager()
@@ -75,6 +78,9 @@ scheduler_manager.correction_manager = correction_manager
 notion_bridge = NotionBridge()
 scheduler_manager.notion_bridge = notion_bridge
 
+# Strategy manager
+strategy_manager = StrategyManager()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -89,6 +95,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(f"{settings.DATA_DIR}/agent_memory", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/corrections", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/job_executions", exist_ok=True)
+    os.makedirs(f"{settings.DATA_DIR}/strategies", exist_ok=True)
     scheduler_manager.start()
     # Try connecting to OpenClaw Gateway (non-blocking — OK if not running)
     asyncio.create_task(openclaw_bridge.connect())
@@ -1095,17 +1102,82 @@ CLAW3D_URL = os.getenv("CLAW3D_URL", "http://claw3d:3000")
 CLAW3D_WS_URL = os.getenv("CLAW3D_WS_URL", "ws://claw3d:3000")
 _claw3d_client = httpx.AsyncClient(base_url=CLAW3D_URL, timeout=30.0)
 
+async def _handle_gateway_rpc(ws: WebSocket, raw: str) -> bool:
+    """Intercept gateway RPC calls that Agent Bus can't handle.
+    Returns True if the message was handled (don't forward to upstream)."""
+    try:
+        msg = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+
+    if msg.get("type") != "req":
+        return False
+
+    method = msg.get("method", "")
+    req_id = msg.get("id", "")
+    params = msg.get("params", {})
+
+    if method == "config.get":
+        await ws.send_text(json.dumps({
+            "type": "res", "id": req_id, "ok": True,
+            "path": "/root/.openclaw/openclaw.json",
+            "exists": True, "hash": "lab-config",
+        }))
+        return True
+
+    if method == "agents.create":
+        name = params.get("name", "").strip()
+        workspace = params.get("workspace", "")
+        if not name:
+            await ws.send_text(json.dumps({
+                "type": "res", "id": req_id, "ok": False,
+                "error": {"code": "INVALID", "message": "Agent name is required"},
+            }))
+            return True
+        try:
+            agent_data = AgentCreate(
+                name=name, role="", goal="", backstory="",
+                provider="openai", model_name="gpt-4o",
+            )
+            agent = agent_manager.create_agent(agent_data)
+            await ws_manager.broadcast("agent_created", agent.model_dump(mode="json"))
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "http://agent-bus:4000/events",
+                    json={"agent": name, "event": "session_start", "project": "the-lab", "message": f"{name} created"},
+                    timeout=5.0,
+                )
+        except Exception as e:
+            await ws.send_text(json.dumps({
+                "type": "res", "id": req_id, "ok": False,
+                "error": {"code": "CREATE_FAILED", "message": str(e)},
+            }))
+            return True
+
+        slug = name.lower().replace(" ", "-")
+        await ws.send_text(json.dumps({
+            "type": "res", "id": req_id, "ok": True,
+            "agentId": slug, "name": name,
+            "workspace": workspace or f"/root/.openclaw/workspace-{slug}",
+        }))
+        return True
+
+    return False
+
+
 @app.websocket("/claw3d/api/gateway/ws")
 async def claw3d_ws_proxy(ws: WebSocket):
     """WebSocket relay: browser <-> Claw3D Studio <-> Agent Bus gateway.
-    Chat is now handled by the patched AgentChatPanel (HTTP to /claw3d/api/lab-chat)
-    so the WS proxy is a clean relay — no interception needed."""
+    Intercepts config.get and agents.create (not supported by Agent Bus),
+    forwards everything else unchanged."""
     await ws.accept()
     try:
         async with _ws_lib.connect(f"{CLAW3D_WS_URL}/api/gateway/ws") as upstream:
             async def browser_to_upstream():
                 async for data in ws.iter_text():
-                    await upstream.send(data)
+                    handled = await _handle_gateway_rpc(ws, data)
+                    if not handled:
+                        await upstream.send(data)
 
             async def upstream_to_browser():
                 async for msg in upstream:
@@ -1211,6 +1283,129 @@ async def claw3d_office_api_proxy(request: Request, path: str):
         return StreamingResponse(content=iter([resp.content]), status_code=resp.status_code, headers=headers)
     except httpx.ConnectError:
         raise HTTPException(status_code=502, detail="Claw3D service unavailable")
+
+
+# --- STRATEGY ENDPOINTS ---
+
+@app.get("/api/strategies")
+async def list_strategies():
+    return strategy_manager.list_all()
+
+
+@app.post("/api/strategies")
+async def create_strategy(data: StrategyCreate):
+    return strategy_manager.create(data.model_dump())
+
+
+@app.get("/api/strategies/{strategy_id}")
+async def get_strategy(strategy_id: str):
+    s = strategy_manager.get(strategy_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    return s
+
+
+@app.patch("/api/strategies/{strategy_id}")
+async def update_strategy(strategy_id: str, data: StrategyUpdate):
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    s = strategy_manager.update(strategy_id, updates)
+    if not s:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    return s
+
+
+@app.delete("/api/strategies/{strategy_id}")
+async def delete_strategy(strategy_id: str):
+    if not strategy_manager.delete(strategy_id):
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    return {"status": "deleted"}
+
+
+@app.get("/api/strategies/{strategy_id}/progress")
+async def get_strategy_progress(strategy_id: str):
+    progress = strategy_manager.get_progress(
+        strategy_id, report_manager, scheduler_manager, cost_tracker
+    )
+    if not progress:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    return progress
+
+
+# --- VALUE METRICS ENDPOINT ---
+
+@app.get("/api/dashboard/value-metrics")
+async def get_value_metrics():
+    """Aggregate value metrics across all agents and strategies."""
+    all_reports = report_manager.list_reports()
+    mem_stats = get_memory_stats(knowledge_manager, agent_memory_manager, correction_manager)
+    agents = agent_manager.list_agents()
+
+    # Reports by agent
+    by_agent = {}
+    for r in all_reports:
+        name = r.get("agent_name", "Unknown")
+        by_agent[name] = by_agent.get(name, 0) + 1
+
+    # Cost summary
+    cost_summary = cost_tracker.get_summary(days=30)
+
+    return {
+        "total_reports": len(all_reports),
+        "reports_by_agent": by_agent,
+        "knowledge_entries": mem_stats.get("knowledge_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "knowledge_count", 0),
+        "agent_memories": mem_stats.get("agent_memory_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "agent_memory_count", 0),
+        "corrections": mem_stats.get("correction_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "correction_count", 0),
+        "auto_rules": mem_stats.get("rules_count", 0) if isinstance(mem_stats, dict) else getattr(mem_stats, "rules_count", 0),
+        "active_agents": len(agents),
+        "strategies_count": len(strategy_manager.list_all()),
+        "total_cost_30d": cost_summary.get("total_cost", 0) if isinstance(cost_summary, dict) else 0,
+    }
+
+
+# --- SCAN DIRECTORY ENDPOINT (for co-work import) ---
+
+def _is_allowed_import_path(directory: str) -> bool:
+    """Validate that the directory is under an allowed base path."""
+    real = os.path.realpath(directory)
+    # Always allow DATA_DIR
+    allowed = [os.path.realpath(settings.DATA_DIR)]
+    # Add any configured allowed directories
+    if settings.IMPORT_ALLOWED_DIRS:
+        for d in settings.IMPORT_ALLOWED_DIRS.split(","):
+            d = d.strip()
+            if d:
+                allowed.append(os.path.realpath(d))
+    return any(real.startswith(base) for base in allowed)
+
+
+@app.post("/api/knowledge/scan-directory")
+async def scan_directory(data: dict = Body(...)):
+    """Scan a directory for .md files and return list of importable files."""
+    directory = data.get("directory", "")
+    if not directory or not os.path.isdir(directory):
+        raise HTTPException(status_code=400, detail="Invalid directory path")
+    if not _is_allowed_import_path(directory):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Directory not in allowed import paths. Set IMPORT_ALLOWED_DIRS in .env to allow this path.",
+        )
+
+    files = []
+    for fname in sorted(os.listdir(directory)):
+        if fname.endswith(".md"):
+            fpath = os.path.join(directory, fname)
+            if os.path.isfile(fpath):
+                size = os.path.getsize(fpath)
+                # Read first 200 chars as preview
+                with open(fpath, "r", errors="ignore") as f:
+                    preview = f.read(200)
+                files.append({
+                    "filename": fname,
+                    "path": fpath,
+                    "size_bytes": size,
+                    "preview": preview.strip(),
+                })
+    return {"directory": directory, "files": files, "count": len(files)}
 
 
 # --- STATIC FILES (serve frontend) ---
