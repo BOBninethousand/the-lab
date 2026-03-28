@@ -12,6 +12,12 @@ const AGENT_COLORS = {
   Quill: '#c4682d',
   Forge: '#7c5bbf',
   Radar: '#1d8fa0',
+  'Dr Bob': '#2196F3',
+  'Agent Bob': '#4CAF50',
+  'Agent Alice': '#9C27B0',
+  'Agent Charlie': '#FF9800',
+  'Agent Diana': '#F44336',
+  'Agent Echo': '#00BCD4',
 }
 
 // Home desk positions within work zone (spaced for 180x110 desks)
@@ -20,6 +26,12 @@ const HOME_POSITIONS = [
   { left: 250, top: 30 },
   { left: 20, top: 185 },
   { left: 250, top: 185 },
+  { left: 20, top: 340 },
+  { left: 250, top: 340 },
+  { left: 20, top: 495 },
+  { left: 250, top: 495 },
+  { left: 20, top: 650 },
+  { left: 250, top: 650 },
 ]
 
 // Visitor positions per zone
@@ -245,7 +257,7 @@ export function OfficeCss() {
               {/* Work Area — top left */}
               <OfficeZone
                 type="work"
-                style={{ left: 40, top: 40, width: 500, height: 360 }}
+                style={{ left: 40, top: 40, width: 500, height: 810 }}
               >
                 {agents.map((agent, idx) => {
                   const zone = agentZones[agent.id]?.zone
@@ -296,7 +308,7 @@ export function OfficeCss() {
               {/* Boss Office — bottom left */}
               <OfficeZone
                 type="boss"
-                style={{ left: 40, top: 420, width: 460, height: 190 }}
+                style={{ left: 40, top: 870, width: 460, height: 190 }}
               >
                 {agents.map((agent) => {
                   const zone = agentZones[agent.id]?.zone
@@ -322,7 +334,7 @@ export function OfficeCss() {
               {/* Notion Outbox — bottom right */}
               <OfficeZone
                 type="notion"
-                style={{ left: 560, top: 420, width: 480, height: 190 }}
+                style={{ left: 560, top: 870, width: 480, height: 190 }}
               >
                 {agents.map((agent) => {
                   const zone = agentZones[agent.id]?.zone
@@ -348,7 +360,7 @@ export function OfficeCss() {
               {/* Server Room — bottom */}
               <OfficeZone
                 type="server"
-                style={{ left: 40, top: 650, width: 1000, height: 130 }}
+                style={{ left: 40, top: 1090, width: 1000, height: 130 }}
               >
                 {agents.map((agent) => {
                   const zone = agentZones[agent.id]?.zone

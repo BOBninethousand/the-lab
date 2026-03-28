@@ -15,6 +15,51 @@ logger = logging.getLogger(__name__)
 
 DAY_MAP = {"mon": "1", "tue": "2", "wed": "3", "thu": "4", "fri": "5", "sat": "6", "sun": "0"}
 
+DEFAULT_JOBS = [
+    {
+        "agent_name": "Agent Bob",
+        "name": "Agent Bob \u2014 Weekly HDL Assessment",
+        "description": "Submit health + longevity assessment to healthdatalab.net",
+        "cron_expression": "0 10 * * 1",
+        "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+    },
+    {
+        "agent_name": "Agent Alice",
+        "name": "Agent Alice \u2014 Weekly HDL Assessment",
+        "description": "Submit health + longevity assessment to healthdatalab.net",
+        "cron_expression": "0 14 * * 1",
+        "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+    },
+    {
+        "agent_name": "Agent Charlie",
+        "name": "Agent Charlie \u2014 Weekly HDL Assessment",
+        "description": "Submit health + longevity assessment to healthdatalab.net",
+        "cron_expression": "0 11 * * 3",
+        "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+    },
+    {
+        "agent_name": "Agent Diana",
+        "name": "Agent Diana \u2014 Weekly HDL Assessment",
+        "description": "Submit health + longevity assessment to healthdatalab.net",
+        "cron_expression": "0 15 * * 3",
+        "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+    },
+    {
+        "agent_name": "Agent Echo",
+        "name": "Agent Echo \u2014 Weekly HDL Assessment",
+        "description": "Submit health + longevity assessment to healthdatalab.net",
+        "cron_expression": "0 10 * * 5",
+        "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+    },
+    {
+        "agent_name": "Dr Bob",
+        "name": "Dr Bob \u2014 Weekly HDL Status Report",
+        "description": "Check credit balances for all 5 HDL test clients and produce a weekly status report",
+        "cron_expression": "0 16 * * 5",
+        "prompt": "Check the credit balance for all 5 HDL test clients and produce a weekly status report. Flag any agents that didn't submit this week.",
+    },
+]
+
 
 def schedule_to_cron(frequency: str, time: str = "09:00", day_of_week: str = None, day_of_month: int = None) -> str:
     hour, minute = time.split(":")
@@ -87,7 +132,44 @@ class SchedulerManager:
         with open(self.jobs_file, "w") as f:
             json.dump(self.jobs, f, indent=2)
 
+    def _seed_default_jobs(self):
+        """Create default scheduled jobs that don't already exist."""
+        existing_names = {j.get("name") for j in self.jobs.values()}
+        created = 0
+
+        for default_job in DEFAULT_JOBS:
+            if default_job["name"] in existing_names:
+                continue
+
+            agent = self.agent_manager.get_agent_by_name(default_job["agent_name"])
+            if not agent:
+                logger.warning(
+                    f"Cannot seed job '{default_job['name']}': "
+                    f"agent '{default_job['agent_name']}' not found"
+                )
+                continue
+
+            job_id = str(uuid.uuid4())
+            self.jobs[job_id] = {
+                "id": job_id,
+                "name": default_job["name"],
+                "description": default_job["description"],
+                "cron_expression": default_job["cron_expression"],
+                "prompt": default_job["prompt"],
+                "agent_id": agent.id,
+                "agent_name": agent.name,
+                "enabled": True,
+                "last_run": None,
+                "next_run": None,
+            }
+            created += 1
+
+        if created:
+            self._save_jobs()
+            logger.info(f"Seeded {created} default scheduled jobs")
+
     def start(self):
+        self._seed_default_jobs()
         if not self.scheduler.running:
             self.scheduler.start()
             for job_id, job_config in self.jobs.items():
