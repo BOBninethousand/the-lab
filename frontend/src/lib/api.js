@@ -1,3 +1,5 @@
+import { calibrateServerTime } from './time'
+
 const BASE = ''
 
 export async function api(path, options = {}) {
@@ -12,6 +14,9 @@ export async function api(path, options = {}) {
   if (!res.ok) {
     throw new Error(`API error: ${res.status}`)
   }
+
+  // Sync clock with server on every response to handle Docker VM drift
+  calibrateServerTime(res.headers.get('Date'))
 
   return res.json()
 }

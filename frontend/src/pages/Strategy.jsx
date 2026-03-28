@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AvatarCircle } from '../components/AvatarCircle'
+import { parseUTC, serverNow } from '../lib/time'
 import { StatCard } from '../components/StatCard'
 import { useWebSocket } from '../hooks/useWebSocket'
 import {
@@ -108,7 +109,7 @@ export function Strategy() {
 
   const timeAgo = (isoStr) => {
     if (!isoStr) return ''
-    const diff = Date.now() - new Date(isoStr).getTime()
+    const diff = serverNow().getTime() - parseUTC(isoStr).getTime()
     const mins = Math.floor(diff / 60000)
     if (mins < 1) return 'just now'
     if (mins < 60) return `${mins}m ago`
@@ -120,7 +121,7 @@ export function Strategy() {
 
   const getHealthColour = (prog) => {
     if (!prog || prog.success_rate_7d === null || prog.success_rate_7d === undefined) return 'bg-lab-text-muted/30'
-    const lastExecMs = prog.last_execution_at ? Date.now() - new Date(prog.last_execution_at).getTime() : Infinity
+    const lastExecMs = prog.last_execution_at ? serverNow().getTime() - parseUTC(prog.last_execution_at).getTime() : Infinity
     const within48h = lastExecMs < 48 * 60 * 60 * 1000
     const within7d = lastExecMs < 7 * 24 * 60 * 60 * 1000
     if (prog.success_rate_7d >= 80 && within48h) return 'bg-emerald-500'

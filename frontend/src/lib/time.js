@@ -1,3 +1,18 @@
+// Server-client clock offset (ms). Compensates for Docker VM clock drift.
+// Updated on every API call from the server's Date header.
+let serverOffset = 0
+
+export function calibrateServerTime(serverDateStr) {
+  if (!serverDateStr) return
+  const serverMs = new Date(serverDateStr).getTime()
+  if (isNaN(serverMs)) return
+  serverOffset = serverMs - Date.now()
+}
+
+export function serverNow() {
+  return new Date(Date.now() + serverOffset)
+}
+
 export function parseUTC(dateStr) {
   if (typeof dateStr === 'string' && !dateStr.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(dateStr)) {
     return new Date(dateStr + 'Z')
@@ -6,10 +21,11 @@ export function parseUTC(dateStr) {
 }
 
 export function formatDistanceToNow(date) {
-  const now = new Date()
+  const now = serverNow()
   const parsed = date instanceof Date ? date : parseUTC(date)
   const seconds = Math.floor((now - parsed) / 1000)
 
+  if (seconds < 0) return 'now'
   if (seconds < 60) return 'now'
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}m`

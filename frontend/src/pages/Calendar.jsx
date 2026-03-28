@@ -7,7 +7,7 @@ import {
   getSchedule, getAgents, createScheduleSimple, runSchedule, updateSchedule, deleteSchedule,
   getJobExecutions, submitJobFeedback, previewCron,
 } from '../lib/api'
-import { formatDistanceToNow } from '../lib/time'
+import { formatDistanceToNow, parseUTC } from '../lib/time'
 
 const FREQUENCIES = [
   { value: 'daily', label: 'Daily' },
@@ -389,7 +389,7 @@ export function Calendar() {
                             <StatusBadge status={exec.status} />
                             <span className="text-xs text-lab-text-primary">{exec.agent_name}</span>
                             <span className="text-[10px] text-lab-text-muted">
-                              {new Date(exec.executed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              {parseUTC(exec.executed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
