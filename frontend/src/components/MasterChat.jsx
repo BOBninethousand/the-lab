@@ -25,6 +25,14 @@ export function MasterChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Auto-grow textarea
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 150) + 'px'
+    }
+  }, [input])
+
   // Hide on Office page (Claw3D has own chat) and Master Chat page (already full-screen)
   if (location.pathname === '/office' || location.pathname === '/master-chat') return null
 
@@ -190,7 +198,7 @@ export function MasterChat() {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask The Lab anything..."
                 rows={1}
-                className="flex-1 bg-lab-elevated border border-lab-border rounded-lg px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-faint focus:outline-none focus:border-lab-accent resize-none max-h-20"
+                className="flex-1 bg-lab-elevated border border-lab-border rounded-lg px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-faint focus:outline-none focus:border-lab-accent resize-none max-h-[150px]"
                 style={{ minHeight: '36px' }}
               />
               <button
