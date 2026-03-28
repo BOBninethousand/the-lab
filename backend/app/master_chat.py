@@ -10,8 +10,15 @@ from typing import Optional
 from openai import OpenAI
 
 from app.config import settings
+from app.tools.hdl_tools import (
+    submit_health_assessment, submit_longevity_assessment,
+    check_user_status, reset_credits, ssh_diagnostics,
+)
+from app.tools.hdl_form_builders import build_health_form_data, build_longevity_form_data
 
 logger = logging.getLogger(__name__)
+
+HDL_PERSONAS_DIR = os.path.join(os.path.dirname(__file__), "data", "hdl_personas")
 
 DATA_DIR = settings.DATA_DIR
 CHAT_FILE = os.path.join(DATA_DIR, "master_chat_history.json")
@@ -397,6 +404,95 @@ TOOLS = [
             },
         },
     },
+    # --- HDL Integration ---
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_health_check",
+            "description": "Submit a health assessment to healthdatalab.net for a test persona. Loads the persona JSON, generates realistic form data, and POSTs to the HDL API.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "persona_name": {
+                        "type": "string",
+                        "enum": ["bob", "alice", "charlie", "diana", "echo"],
+                        "description": "Test persona name",
+                    },
+                },
+                "required": ["persona_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "submit_longevity_check",
+            "description": "Submit a longevity assessment to healthdatalab.net. Triggers Make.com PDF report generation and email delivery.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "persona_name": {
+                        "type": "string",
+                        "enum": ["bob", "alice", "charlie", "diana", "echo"],
+                        "description": "Test persona name",
+                    },
+                },
+                "required": ["persona_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_hdl_status",
+            "description": "Check HDL server connectivity and credit balance for a persona.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "persona_name": {
+                        "type": "string",
+                        "enum": ["bob", "alice", "charlie", "diana", "echo"],
+                        "description": "Test persona name",
+                    },
+                },
+                "required": ["persona_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reset_hdl_credits",
+            "description": "Top up health and longevity credits for the practitioner pool.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {
+                        "type": "integer",
+                        "description": "Number of credits to add (default 100, max 500)",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_hdl_diagnostics",
+            "description": "Run SSH diagnostics on the HDL server (read-only).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "enum": ["ping", "tail-logs"],
+                        "description": "Diagnostic command to run",
+                    },
+                },
+                "required": ["command"],
+            },
+        },
+    },
 ]
 
 
@@ -588,6 +684,12 @@ class MasterChat:
             from app.skills import SkillExecutor
             self._skill_executor = SkillExecutor(self)
         return self._skill_executor
+
+    def _load_hdl_persona(self, persona_name: str) -> dict:
+        """Load an HDL persona JSON file by name."""
+        path = os.path.join(HDL_PERSONAS_DIR, f"{persona_name}.json")
+        with open(path) as f:
+            return json.load(f)
 
     # --- Tool Execution ---
 
@@ -1309,6 +1411,87 @@ class MasterChat:
                     "mode": "sequential",
                 })
 
+            # --- HDL Integration ---
+
+            elif tool_name == "submit_health_check":
+                persona_name = args["persona_name"]
+                persona = self._load_hdl_persona(persona_name)
+                form_data = build_health_form_data(persona)
+                result = submit_health_assessment(persona["email"], form_data, persona_name)
+                summary = f"Health assessment submitted for {persona['name']}: submission_id={result.get('submission_id', 'n/a')}, success={result.get('success', False)}"
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("tool_executed", {
+                        "tool_name": "submit_health_check",
+                        "persona": persona_name,
+                        "result": summary,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                return summary
+
+            elif tool_name == "submit_longevity_check":
+                persona_name = args["persona_name"]
+                persona = self._load_hdl_persona(persona_name)
+                complete_data = build_longevity_form_data(persona)
+                result = submit_longevity_assessment(persona["email"], complete_data, persona_name)
+                summary = f"Longevity assessment submitted for {persona['name']}: submission_id={result.get('submission_id', 'n/a')}, make_status={result.get('make_status', 'n/a')}, success={result.get('success', False)}"
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("tool_executed", {
+                        "tool_name": "submit_longevity_check",
+                        "persona": persona_name,
+                        "result": summary,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                return summary
+
+            elif tool_name == "check_hdl_status":
+                persona_name = args["persona_name"]
+                persona = self._load_hdl_persona(persona_name)
+                result = check_user_status(persona["email"])
+                credits = result.get("credits", {})
+                usage = result.get("daily_usage", {})
+                summary = (
+                    f"HDL status for {persona['name']} ({persona['email']}):\n"
+                    f"  User ID: {result.get('user_id', 'n/a')}\n"
+                    f"  Roles: {', '.join(result.get('roles', []))}\n"
+                    f"  Credits — health: {credits.get('health', '?')}, longevity: {credits.get('longevity', '?')}\n"
+                    f"  Daily usage — health: {usage.get('health', 0)}, longevity: {usage.get('longevity', 0)}"
+                )
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("tool_executed", {
+                        "tool_name": "check_hdl_status",
+                        "persona": persona_name,
+                        "result": summary[:200],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                return summary
+
+            elif tool_name == "reset_hdl_credits":
+                amount = args.get("amount", 100)
+                practitioner_email = "260128vm+practitioner@gmail.com"
+                result = reset_credits(practitioner_email, amount, "master_chat")
+                summary = f"Credits reset: added {amount} to practitioner pool. New balances: {json.dumps(result.get('credits', result))}"
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("tool_executed", {
+                        "tool_name": "reset_hdl_credits",
+                        "amount": amount,
+                        "result": summary[:200],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                return summary
+
+            elif tool_name == "run_hdl_diagnostics":
+                command = args["command"]
+                result = ssh_diagnostics(command)
+                summary = f"HDL diagnostics ({command}): {result}"
+                if self.ws_manager:
+                    await self.ws_manager.broadcast("tool_executed", {
+                        "tool_name": "run_hdl_diagnostics",
+                        "command": command,
+                        "result": summary[:200],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                return summary
+
             else:
                 return f"Unknown tool: {tool_name}"
 
@@ -1372,6 +1555,7 @@ class MasterChat:
                 "status", "how much", "spending", "cost", "star", "unstar",
                 "skill", "deploy", "briefing", "audit", "onboard",
                 "collaborate", "together", "strategy",
+                "health", "longevity", "hdl", "credits", "diagnostics", "persona",
             ]
             msg_lower = user_message.lower()
             is_action = any(kw in msg_lower for kw in action_keywords)
@@ -1503,6 +1687,7 @@ class MasterChat:
                 "status", "how much", "spending", "cost", "star", "unstar",
                 "skill", "deploy", "briefing", "audit", "onboard",
                 "collaborate", "together", "strategy",
+                "health", "longevity", "hdl", "credits", "diagnostics", "persona",
             ]
             msg_lower = user_message.lower()
             is_action = any(kw in msg_lower for kw in action_keywords)
