@@ -121,8 +121,13 @@ class SchedulerManager:
             try:
                 with open(self.jobs_file, "r") as f:
                     data = json.load(f)
-                    self.jobs = data
-            except:
+                    if isinstance(data, dict):
+                        self.jobs = data
+                    else:
+                        logger.warning("scheduled_jobs.json is not a dict, resetting")
+                        self.jobs = {}
+            except Exception as e:
+                logger.error(f"Error loading scheduled jobs: {e}")
                 self.jobs = {}
         else:
             self.jobs = {}
@@ -169,7 +174,10 @@ class SchedulerManager:
             logger.info(f"Seeded {created} default scheduled jobs")
 
     def start(self):
-        self._seed_default_jobs()
+        try:
+            self._seed_default_jobs()
+        except Exception as e:
+            logger.error(f"Failed to seed default jobs: {e}")
         if not self.scheduler.running:
             self.scheduler.start()
             for job_id, job_config in self.jobs.items():
