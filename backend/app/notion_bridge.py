@@ -35,7 +35,7 @@ REPORT_TYPE_EMOJIS = {
     "content_calendar": "📅",
     "health_check": "🏥",
     "longevity_check": "🧬",
-    "hdl_audit": "📊",
+    "hdl_audit": "🩺",
     "credit_report": "💳",
     "weekly_digest": "📰",
     "research": "🔬",

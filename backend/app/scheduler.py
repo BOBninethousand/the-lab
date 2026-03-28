@@ -602,8 +602,6 @@ class SchedulerManager:
                         _loop,
                     )
                     response = future.result(timeout=120)
-                    if isinstance(response, dict):
-                        response = response.get("response", str(response))
                 else:
                     response = self.agent_manager.chat(agent_id, enhanced_prompt)
             else:
