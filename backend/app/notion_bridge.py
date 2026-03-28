@@ -12,9 +12,12 @@ NOTION_VERSION = "2022-06-28"
 
 AGENT_EMOJIS = {
     "Scout": "🔍",
-    "Quill": "✏️",
-    "Forge": "🔨",
+    "Quill": "✍️",
+    "Forge": "⚒️",
     "Radar": "📡",
+    "Atlas": "🌐",
+    "Zeus": "⚡",
+    "Master Chat": "🤖",
 }
 
 REPORT_TYPE_EMOJIS = {
@@ -434,50 +437,101 @@ class NotionBridge:
         blocks = []
         lines = text.split("\n")
         i = 0
+        in_code_block = False
+        code_lines = []
+        code_language = ""
+
         while i < len(lines):
             line = lines[i].rstrip()
 
-            # Skip empty lines
-            if not line:
+            # Fenced code blocks
+            if line.lstrip().startswith("```"):
+                if not in_code_block:
+                    in_code_block = True
+                    code_language = line.lstrip()[3:].strip() or "plain text"
+                    code_lines = []
+                else:
+                    in_code_block = False
+                    blocks.append({
+                        "object": "block", "type": "code",
+                        "code": {
+                            "rich_text": [{"type": "text", "text": {"content": NotionBridge._smart_truncate("\n".join(code_lines))}}],
+                            "language": code_language,
+                        }
+                    })
                 i += 1
                 continue
 
-            # Headings
+            if in_code_block:
+                code_lines.append(lines[i].rstrip())
+                i += 1
+                continue
+
+            # Empty lines — preserve as spacing
+            if not line:
+                blocks.append({
+                    "object": "block", "type": "paragraph",
+                    "paragraph": {"rich_text": []}
+                })
+                i += 1
+                continue
+
+            # Headings (with rich text parsing)
             if line.startswith("### "):
                 blocks.append({
                     "object": "block", "type": "heading_3",
-                    "heading_3": {"rich_text": [{"type": "text", "text": {"content": line[4:].strip()}}]}
+                    "heading_3": {"rich_text": NotionBridge._text_to_rich_text(line[4:].strip())}
                 })
             elif line.startswith("## "):
                 blocks.append({
                     "object": "block", "type": "heading_2",
-                    "heading_2": {"rich_text": [{"type": "text", "text": {"content": line[3:].strip()}}]}
+                    "heading_2": {"rich_text": NotionBridge._text_to_rich_text(line[3:].strip())}
                 })
             elif line.startswith("# "):
                 blocks.append({
                     "object": "block", "type": "heading_1",
-                    "heading_1": {"rich_text": [{"type": "text", "text": {"content": line[2:].strip()}}]}
+                    "heading_1": {"rich_text": NotionBridge._text_to_rich_text(line[2:].strip())}
                 })
             # Horizontal rule
             elif line.strip() in ("---", "***", "___"):
                 blocks.append({"object": "block", "type": "divider", "divider": {}})
+            # Blockquote
+            elif line.lstrip().startswith("> "):
+                content = line.lstrip()[2:].strip()
+                rich_text = NotionBridge._text_to_rich_text(content)
+                blocks.append({
+                    "object": "block", "type": "quote",
+                    "quote": {"rich_text": rich_text}
+                })
             # Bullet list
             elif line.lstrip().startswith(("- ", "* ", "+ ")):
                 indent = len(line) - len(line.lstrip())
                 content = line.lstrip()[2:].strip()
                 rich_text = NotionBridge._text_to_rich_text(content)
-                blocks.append({
+                block = {
                     "object": "block", "type": "bulleted_list_item",
                     "bulleted_list_item": {"rich_text": rich_text}
-                })
+                }
+                # Nested list — attach as child of previous list item
+                if indent > 0 and blocks and blocks[-1].get("type") == "bulleted_list_item":
+                    parent = blocks[-1]["bulleted_list_item"]
+                    parent.setdefault("children", []).append(block)
+                else:
+                    blocks.append(block)
             # Numbered list
-            elif re.match(r'^\d+\.\s', line.lstrip()):
+            elif re.match(r'^\s*\d+\.\s', line):
+                indent = len(line) - len(line.lstrip())
                 content = re.sub(r'^\d+\.\s', '', line.lstrip()).strip()
                 rich_text = NotionBridge._text_to_rich_text(content)
-                blocks.append({
+                block = {
                     "object": "block", "type": "numbered_list_item",
                     "numbered_list_item": {"rich_text": rich_text}
-                })
+                }
+                if indent > 0 and blocks and blocks[-1].get("type") == "numbered_list_item":
+                    parent = blocks[-1]["numbered_list_item"]
+                    parent.setdefault("children", []).append(block)
+                else:
+                    blocks.append(block)
             # Regular paragraph
             else:
                 rich_text = NotionBridge._text_to_rich_text(line)
@@ -488,30 +542,71 @@ class NotionBridge:
 
             i += 1
 
-        # Notion API limits 100 blocks per request (reserve 1 for metadata callout)
-        return blocks[:99]
+        return blocks
+
+    @staticmethod
+    def _smart_truncate(text: str, limit: int = 2000) -> str:
+        """Truncate text at word boundary within limit."""
+        if len(text) <= limit:
+            return text
+        truncated = text[:limit]
+        last_space = truncated.rfind(" ")
+        if last_space > limit * 0.8:
+            return truncated[:last_space]
+        return truncated
 
     @staticmethod
     def _text_to_rich_text(text: str) -> List[dict]:
-        """Convert text with **bold** and *italic* markers to Notion rich_text array."""
+        """Convert text with **bold**, *italic*, `code`, [links](url) to Notion rich_text array."""
         import re
-        # Truncate to Notion's 2000 char limit per rich_text block
-        text = text[:2000]
+        text = NotionBridge._smart_truncate(text)
         parts = []
         pos = 0
-        for match in re.finditer(r'\*\*(.+?)\*\*|\*(.+?)\*', text):
+        pattern = re.compile(
+            r'\*\*\*(.+?)\*\*\*'   # ***bold+italic***
+            r'|\*\*(.+?)\*\*'      # **bold**
+            r'|\*(.+?)\*'          # *italic*
+            r'|`([^`]+)`'          # `code`
+            r'|\[([^\]]+)\]\(([^)]+)\)'  # [text](url)
+        )
+        for match in pattern.finditer(text):
             if match.start() > pos:
                 parts.append({"type": "text", "text": {"content": text[pos:match.start()]}})
             if match.group(1):
-                parts.append({"type": "text", "text": {"content": match.group(1)}, "annotations": {"bold": True}})
+                parts.append({"type": "text", "text": {"content": match.group(1)}, "annotations": {"bold": True, "italic": True}})
             elif match.group(2):
-                parts.append({"type": "text", "text": {"content": match.group(2)}, "annotations": {"italic": True}})
+                parts.append({"type": "text", "text": {"content": match.group(2)}, "annotations": {"bold": True}})
+            elif match.group(3):
+                parts.append({"type": "text", "text": {"content": match.group(3)}, "annotations": {"italic": True}})
+            elif match.group(4):
+                parts.append({"type": "text", "text": {"content": match.group(4)}, "annotations": {"code": True}})
+            elif match.group(5):
+                parts.append({"type": "text", "text": {"content": match.group(5), "link": {"url": match.group(6)}}})
             pos = match.end()
         if pos < len(text):
             parts.append({"type": "text", "text": {"content": text[pos:]}})
         if not parts:
             parts.append({"type": "text", "text": {"content": text}})
         return parts
+
+    async def _append_blocks(self, page_id: str, blocks: List[dict]) -> bool:
+        """Append blocks to an existing page in batches of 100."""
+        for start in range(0, len(blocks), 100):
+            batch = blocks[start:start + 100]
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.patch(
+                        f"{self.BASE_URL}/blocks/{page_id}/children",
+                        headers=self._headers(),
+                        json={"children": batch},
+                    )
+                    if resp.status_code != 200:
+                        logger.error(f"Notion append blocks failed: {resp.status_code} {resp.text[:300]}")
+                        return False
+            except Exception as e:
+                logger.error(f"Notion append blocks error: {e}")
+                return False
+        return True
 
     async def publish_report(
         self,
@@ -525,16 +620,13 @@ class NotionBridge:
         if not self.configured:
             return None
         try:
-            # Make title unique with date
-            dated_title = f"{title} — {datetime.now(timezone.utc).strftime('%d %b')}"
+            now = datetime.now(timezone.utc)
+            agent_icon = AGENT_EMOJIS.get(agent_name, "📋")
+            dated_title = f"{agent_icon} {title} — {now.strftime('%d %b')}"
 
-            # Get or create per-agent database
             db_id = await self._get_or_create_agent_db(agent_name or "General")
-
-            # Choose emoji based on report type
             page_emoji = REPORT_TYPE_EMOJIS.get(report_type, "📄")
 
-            # Format type label for database property
             type_labels = {
                 "briefing": "Briefing", "content": "Content", "tech_report": "Tech Report",
                 "outreach": "Outreach", "weekly_review": "Weekly Review",
@@ -543,32 +635,45 @@ class NotionBridge:
             type_label = type_labels.get(report_type, report_type.replace("_", " ").title() if report_type else "Report")
             source_label = source.capitalize() if source else "Manual"
 
-            # Convert content to Notion blocks
-            content_blocks = self._markdown_to_notion_blocks(content)
+            # Metadata header blocks
+            header_blocks = [
+                {
+                    "object": "block", "type": "callout",
+                    "callout": {
+                        "rich_text": [{"type": "text", "text": {"content": f"Report by {agent_name or 'General'} | {now.strftime('%d %b %Y %H:%M UTC')} | {type_label}"}}],
+                        "icon": {"type": "emoji", "emoji": agent_icon},
+                    }
+                },
+                {"object": "block", "type": "divider", "divider": {}},
+            ]
 
-            # Build page data
+            content_blocks = self._markdown_to_notion_blocks(content)
+            all_blocks = header_blocks + content_blocks
+
+            # First 100 blocks go with page creation
+            initial_blocks = all_blocks[:100]
+            overflow_blocks = all_blocks[100:]
+
             if db_id:
-                # Publish into agent's database
                 page_data = {
                     "parent": {"database_id": db_id},
                     "icon": {"type": "emoji", "emoji": page_emoji},
                     "properties": {
                         "Title": {"title": [{"text": {"content": dated_title}}]},
                         "Type": {"select": {"name": type_label}},
-                        "Date": {"date": {"start": datetime.now(timezone.utc).strftime("%Y-%m-%d")}},
+                        "Date": {"date": {"start": now.strftime("%Y-%m-%d")}},
                         "Source": {"select": {"name": source_label}},
                     },
-                    "children": content_blocks,
+                    "children": initial_blocks,
                 }
             else:
-                # Fallback: publish as child page of connected page
                 page_data = {
                     "parent": {"page_id": self.database_id},
                     "icon": {"type": "emoji", "emoji": page_emoji},
                     "properties": {
                         "title": {"title": [{"text": {"content": dated_title}}]}
                     },
-                    "children": content_blocks,
+                    "children": initial_blocks,
                 }
 
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -579,7 +684,13 @@ class NotionBridge:
                 )
                 if resp.status_code == 200:
                     result = resp.json()
+                    page_id = result["id"]
                     page_url = result.get("url", "")
+
+                    # Append overflow blocks in batches
+                    if overflow_blocks:
+                        await self._append_blocks(page_id, overflow_blocks)
+
                     logger.info(f"Published to Notion [{agent_name}]: {title} → {page_url}")
                     return page_url
                 else:
