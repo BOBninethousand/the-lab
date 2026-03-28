@@ -55,6 +55,26 @@ def calculate_whr(waist_cm: float, hip_cm: float, gender: str) -> tuple[float, s
     return whr, category
 
 
+def calculate_whtr(waist_cm: float, height_cm: float) -> tuple[float, str, int]:
+    """Calculate waist-height ratio, category, and score (matches longevity-form-raw.php getWHtRScore)."""
+    if height_cm <= 0 or waist_cm <= 0:
+        return 0, "N/A", 0
+    whtr = round(waist_cm / height_cm, 2)
+    # Categories per NICE guidelines (universal, no gender difference)
+    if whtr < 0.40:
+        return whtr, "Slender", 4
+    elif whtr < 0.50:
+        return whtr, "Healthy", 5
+    elif whtr < 0.54:
+        return whtr, "Slightly Elevated", 4
+    elif whtr < 0.58:
+        return whtr, "Elevated", 3
+    elif whtr < 0.63:
+        return whtr, "High", 2
+    else:
+        return whtr, "Very High", 1
+
+
 def calculate_biological_age(chronological_age: int, scores: dict) -> tuple[float, float, float]:
     """
     Calculate biological age, age shift, and aging rate from lifestyle scores.
@@ -156,6 +176,7 @@ def build_longevity_form_data(persona: dict, submission_history: list = None) ->
     waist = _apply_variance(persona.get("waist_cm", 85), var.get("waist_cm", [-1, 1]))
     hip = _apply_variance(persona.get("hip_cm", 98), var.get("hip_cm", [-1, 1]))
     whr, whr_category = calculate_whr(waist, hip, persona["gender"])
+    whtr, whtr_category, whtr_score = calculate_whtr(waist, height)
 
     # Generate lifestyle scores (0-5 scale) with progression
     score_bases = base.get("scores", {})
@@ -231,6 +252,9 @@ def build_longevity_form_data(persona: dict, submission_history: list = None) ->
         "bmiCategory": bmi_category,
         "whr": whr,
         "whrCategory": whr_category,
+        "whtr": whtr,
+        "whtrCategory": whtr_category,
+        "whtrScore": whtr_score,
         "bpSystolic": round(bp_sys),
         "bpDiastolic": round(bp_dia),
         "restingHeartRateBpm": round(rhr),
