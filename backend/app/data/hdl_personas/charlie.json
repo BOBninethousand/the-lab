@@ -1,0 +1,63 @@
+{
+  "name": "Agent Charlie",
+  "email": "260128vm+charlie@gmail.com",
+  "gender": "male",
+  "age": 28,
+  "height_cm": 182,
+  "weight_kg": 78,
+  "waist_cm": 80,
+  "hip_cm": 96,
+  "bp_systolic": 115,
+  "bp_diastolic": 72,
+  "resting_heart_rate": 62,
+  "practitioner_email": "260128vm+practitioner@gmail.com",
+  "base_profile": {
+    "fitness_level": "very good",
+    "exercise_frequency": "5-6 times per week",
+    "exercise_type": "CrossFit, running, and cycling",
+    "daily_steps": 12000,
+    "diet_quality": "experimenting",
+    "water_intake": "8+ glasses",
+    "alcohol_frequency": "social weekends",
+    "smoking_status": "never",
+    "energy_level": 8,
+    "sleep_quality_10": 7,
+    "stress_level_10": 4,
+    "social_connections": "very good",
+    "health_challenges": "Experimenting with keto/paleo diets, occasional joint pain from training",
+    "health_goals": "Optimize performance, test different nutrition approaches",
+    "medications": "Creatine, protein powder",
+    "family_history": "No significant family history",
+    "scores": {
+      "physicalActivity": 4.5,
+      "sleepDuration": 3.5,
+      "sleepQuality": 3.5,
+      "stressLevels": 3.5,
+      "socialConnections": 4.0,
+      "dietQuality": 3.0,
+      "alcoholConsumption": 3.0,
+      "smokingStatus": 5.0,
+      "cognitiveActivity": 3.0,
+      "sunlightExposure": 4.0,
+      "supplementIntake": 4.0,
+      "dailyHydration": 4.0,
+      "sitStand": 4.0,
+      "breathHold": 3.5,
+      "balance": 4.0,
+      "skinElasticity": 4.5
+    }
+  },
+  "progression": {
+    "direction": "improving",
+    "focus_areas": ["dietQuality", "cognitiveActivity"],
+    "change_rate": "moderate"
+  },
+  "variance": {
+    "weight_kg": [-1.0, 1.0],
+    "bp_systolic": [-4, 4],
+    "bp_diastolic": [-3, 3],
+    "resting_heart_rate": [-3, 3],
+    "waist_cm": [-1, 1],
+    "hip_cm": [-0.5, 0.5]
+  }
+}

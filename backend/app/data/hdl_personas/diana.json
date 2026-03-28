@@ -1,0 +1,63 @@
+{
+  "name": "Agent Diana",
+  "email": "260128vm+diana@gmail.com",
+  "gender": "female",
+  "age": 55,
+  "height_cm": 160,
+  "weight_kg": 70,
+  "waist_cm": 82,
+  "hip_cm": 100,
+  "bp_systolic": 138,
+  "bp_diastolic": 86,
+  "resting_heart_rate": 76,
+  "practitioner_email": "260128vm+practitioner@gmail.com",
+  "base_profile": {
+    "fitness_level": "moderate",
+    "exercise_frequency": "2-3 times per week",
+    "exercise_type": "Walking and light resistance",
+    "daily_steps": 6000,
+    "diet_quality": "good",
+    "water_intake": "5-6 glasses",
+    "alcohol_frequency": "rarely",
+    "smoking_status": "former (quit 10 years ago)",
+    "energy_level": 5,
+    "sleep_quality_10": 4,
+    "stress_level_10": 5,
+    "social_connections": "good",
+    "health_challenges": "Elevated blood pressure, declining sleep quality, perimenopause symptoms",
+    "health_goals": "Manage blood pressure naturally, improve sleep",
+    "medications": "Low-dose ACE inhibitor, magnesium supplement",
+    "family_history": "Mother had hypertension, grandmother had osteoporosis",
+    "scores": {
+      "physicalActivity": 2.5,
+      "sleepDuration": 2.5,
+      "sleepQuality": 2.0,
+      "stressLevels": 3.0,
+      "socialConnections": 3.5,
+      "dietQuality": 3.5,
+      "alcoholConsumption": 4.0,
+      "smokingStatus": 3.5,
+      "cognitiveActivity": 3.5,
+      "sunlightExposure": 2.5,
+      "supplementIntake": 3.5,
+      "dailyHydration": 2.5,
+      "sitStand": 2.0,
+      "breathHold": 2.0,
+      "balance": 2.5,
+      "skinElasticity": 2.0
+    }
+  },
+  "progression": {
+    "direction": "declining",
+    "focus_areas": ["sleepQuality", "sleepDuration"],
+    "change_rate": "gradual"
+  },
+  "variance": {
+    "weight_kg": [-0.3, 0.5],
+    "bp_systolic": [-5, 5],
+    "bp_diastolic": [-3, 3],
+    "resting_heart_rate": [-2, 3],
+    "waist_cm": [-0.5, 1],
+    "hip_cm": [-0.5, 0.5]
+  }
+}

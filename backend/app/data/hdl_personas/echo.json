@@ -1,0 +1,63 @@
+{
+  "name": "Agent Echo",
+  "email": "260128vm+echo@gmail.com",
+  "gender": "male",
+  "age": 38,
+  "height_cm": 175,
+  "weight_kg": 95,
+  "waist_cm": 98,
+  "hip_cm": 104,
+  "bp_systolic": 132,
+  "bp_diastolic": 84,
+  "resting_heart_rate": 82,
+  "practitioner_email": "260128vm+practitioner@gmail.com",
+  "base_profile": {
+    "fitness_level": "poor",
+    "exercise_frequency": "1-2 times per week",
+    "exercise_type": "Starting with walking and bodyweight exercises",
+    "daily_steps": 4000,
+    "diet_quality": "fair",
+    "water_intake": "4-5 glasses",
+    "alcohol_frequency": "2-3 times per week",
+    "smoking_status": "never",
+    "energy_level": 4,
+    "sleep_quality_10": 5,
+    "stress_level_10": 6,
+    "social_connections": "fair",
+    "health_challenges": "Sedentary lifestyle recovery, overweight, low energy, pre-diabetic markers",
+    "health_goals": "Lose 15kg, build exercise habit, reverse pre-diabetes",
+    "medications": "None yet, monitoring blood sugar",
+    "family_history": "Father had type 2 diabetes at 50, mother has high cholesterol",
+    "scores": {
+      "physicalActivity": 1.5,
+      "sleepDuration": 3.0,
+      "sleepQuality": 2.5,
+      "stressLevels": 2.0,
+      "socialConnections": 2.5,
+      "dietQuality": 2.0,
+      "alcoholConsumption": 2.5,
+      "smokingStatus": 5.0,
+      "cognitiveActivity": 2.5,
+      "sunlightExposure": 1.5,
+      "supplementIntake": 1.0,
+      "dailyHydration": 2.0,
+      "sitStand": 1.5,
+      "breathHold": 1.5,
+      "balance": 2.0,
+      "skinElasticity": 3.0
+    }
+  },
+  "progression": {
+    "direction": "improving",
+    "focus_areas": ["physicalActivity", "dietQuality", "dailyHydration", "sunlightExposure"],
+    "change_rate": "rapid"
+  },
+  "variance": {
+    "weight_kg": [-0.8, 0.5],
+    "bp_systolic": [-4, 4],
+    "bp_diastolic": [-3, 3],
+    "resting_heart_rate": [-3, 3],
+    "waist_cm": [-1, 1],
+    "hip_cm": [-0.5, 0.5]
+  }
+}

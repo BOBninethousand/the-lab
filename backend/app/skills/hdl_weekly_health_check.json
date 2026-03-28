@@ -1,0 +1,58 @@
+{
+  "name": "hdl_weekly_health_check",
+  "description": "Submit health and longevity assessments for a Lab test agent, triggering real Make.com PDF reports.",
+  "steps": [
+    {
+      "name": "load_persona",
+      "prompt": "Load the agent persona config from data/hdl_personas/{param.agent_name}.json. Parse the JSON and store it for use in subsequent steps.",
+      "tools": ["file_read"]
+    },
+    {
+      "name": "check_credits",
+      "prompt": "Check the credit status for {param.email} using the hdl_tools.check_user_status() function. If health or longevity credits are below 10, call hdl_tools.reset_credits() to top up by 100.",
+      "tools": ["hdl_tools"]
+    },
+    {
+      "name": "generate_health_data",
+      "prompt": "Using the persona config from step 1 and any previous submission history, generate realistic health assessment form data using hdl_form_builders.build_health_form_data(). The data should show gradual progression consistent with the persona's trajectory (improving, stable, or declining). Add natural variance to simulate real human data.",
+      "tools": ["hdl_form_builders"]
+    },
+    {
+      "name": "submit_health",
+      "prompt": "Submit the generated health assessment data using hdl_tools.submit_health_assessment(email='{param.email}', form_data=<health_data>, agent_name='{param.agent_name}'). Record the submission_id and dashboard_url from the response.",
+      "tools": ["hdl_tools"]
+    },
+    {
+      "name": "generate_longevity_data",
+      "prompt": "Generate realistic longevity assessment data using hdl_form_builders.build_longevity_form_data(). This includes all 16 lifestyle scores (0-5 scale), biological age calculation, BMI, WHR, and answer text descriptions. Ensure scores are consistent with the health data just submitted.",
+      "tools": ["hdl_form_builders"]
+    },
+    {
+      "name": "submit_longevity",
+      "prompt": "Submit the longevity assessment using hdl_tools.submit_longevity_assessment(). This triggers Make.com to generate a PDF report which will be emailed to the test email. Record the response including make_status.",
+      "tools": ["hdl_tools"]
+    },
+    {
+      "name": "verify",
+      "prompt": "Call hdl_tools.check_user_status() again to verify both submissions landed successfully. Check that credits decreased by 2 (1 health + 1 longevity) and that the daily usage count increased.",
+      "tools": ["hdl_tools"]
+    },
+    {
+      "name": "log_to_notion",
+      "prompt": "Log the results to the 'HDL Lab Test Log' Notion database with: Date (today), Agent ({param.agent_name}), Form Type (Health + Longevity), Status (Success/Failed based on verify step), Credits Remaining (from verify), Submission IDs (from submit steps), PDF Triggered (true if make_status was 'sent').",
+      "tools": ["notion"]
+    }
+  ],
+  "params": {
+    "agent_name": "Name of the agent (bob, alice, charlie, diana, echo)",
+    "email": "Agent's email address (260128vm+<name>@gmail.com)"
+  },
+  "schedule_examples": {
+    "bob_monday": "0 10 * * 1",
+    "alice_monday": "0 14 * * 1",
+    "charlie_wednesday": "0 11 * * 3",
+    "diana_wednesday": "0 15 * * 3",
+    "echo_friday": "0 10 * * 5",
+    "bob_friday_2nd": "0 14 * * 5"
+  }
+}

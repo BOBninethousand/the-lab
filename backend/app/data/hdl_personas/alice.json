@@ -1,0 +1,63 @@
+{
+  "name": "Agent Alice",
+  "email": "260128vm+alice@gmail.com",
+  "gender": "female",
+  "age": 42,
+  "height_cm": 165,
+  "weight_kg": 62,
+  "waist_cm": 72,
+  "hip_cm": 95,
+  "bp_systolic": 118,
+  "bp_diastolic": 75,
+  "resting_heart_rate": 68,
+  "practitioner_email": "260128vm+practitioner@gmail.com",
+  "base_profile": {
+    "fitness_level": "good",
+    "exercise_frequency": "4-5 times per week",
+    "exercise_type": "Yoga, swimming, and hiking",
+    "daily_steps": 9000,
+    "diet_quality": "very good",
+    "water_intake": "8+ glasses",
+    "alcohol_frequency": "rarely",
+    "smoking_status": "never",
+    "energy_level": 7,
+    "sleep_quality_10": 7,
+    "stress_level_10": 7,
+    "social_connections": "very good",
+    "health_challenges": "Chronic work stress, tension headaches",
+    "health_goals": "Reduce stress, maintain flexibility",
+    "medications": "Occasional ibuprofen for headaches",
+    "family_history": "Mother had breast cancer at 55",
+    "scores": {
+      "physicalActivity": 4.0,
+      "sleepDuration": 3.5,
+      "sleepQuality": 3.5,
+      "stressLevels": 2.0,
+      "socialConnections": 4.0,
+      "dietQuality": 4.0,
+      "alcoholConsumption": 4.5,
+      "smokingStatus": 5.0,
+      "cognitiveActivity": 3.5,
+      "sunlightExposure": 3.5,
+      "supplementIntake": 3.0,
+      "dailyHydration": 4.0,
+      "sitStand": 3.0,
+      "breathHold": 3.0,
+      "balance": 4.0,
+      "skinElasticity": 3.5
+    }
+  },
+  "progression": {
+    "direction": "stable",
+    "focus_areas": ["stressLevels", "sleepQuality"],
+    "change_rate": "gradual"
+  },
+  "variance": {
+    "weight_kg": [-0.3, 0.3],
+    "bp_systolic": [-2, 2],
+    "bp_diastolic": [-2, 2],
+    "resting_heart_rate": [-3, 3],
+    "waist_cm": [-0.5, 0.5],
+    "hip_cm": [-0.5, 0.5]
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "name": "Agent Bob",
+  "email": "260128vm+bob@gmail.com",
+  "gender": "male",
+  "age": 35,
+  "height_cm": 178,
+  "weight_kg": 82,
+  "waist_cm": 88,
+  "hip_cm": 98,
+  "bp_systolic": 125,
+  "bp_diastolic": 80,
+  "resting_heart_rate": 74,
+  "practitioner_email": "260128vm+practitioner@gmail.com",
+  "base_profile": {
+    "fitness_level": "moderate",
+    "exercise_frequency": "3-4 times per week",
+    "exercise_type": "Weight training and walking",
+    "daily_steps": 7500,
+    "diet_quality": "good",
+    "water_intake": "6-8 glasses",
+    "alcohol_frequency": "occasional",
+    "smoking_status": "never",
+    "energy_level": 6,
+    "sleep_quality_10": 5,
+    "stress_level_10": 5,
+    "social_connections": "good",
+    "health_challenges": "Lower back pain, occasional insomnia",
+    "health_goals": "Improve sleep quality, increase flexibility",
+    "medications": "None",
+    "family_history": "Father had type 2 diabetes at 60",
+    "scores": {
+      "physicalActivity": 3.5,
+      "sleepDuration": 3.0,
+      "sleepQuality": 2.5,
+      "stressLevels": 3.0,
+      "socialConnections": 3.5,
+      "dietQuality": 3.5,
+      "alcoholConsumption": 3.5,
+      "smokingStatus": 5.0,
+      "cognitiveActivity": 3.0,
+      "sunlightExposure": 2.5,
+      "supplementIntake": 2.0,
+      "dailyHydration": 3.0,
+      "sitStand": 2.5,
+      "breathHold": 2.5,
+      "balance": 3.0,
+      "skinElasticity": 3.5
+    }
+  },
+  "progression": {
+    "direction": "improving",
+    "focus_areas": ["sleepQuality", "sleepDuration", "physicalActivity", "balance"],
+    "change_rate": "gradual"
+  },
+  "variance": {
+    "weight_kg": [-0.5, 0.5],
+    "bp_systolic": [-3, 3],
+    "bp_diastolic": [-2, 2],
+    "resting_heart_rate": [-2, 2],
+    "waist_cm": [-1, 1],
+    "hip_cm": [-0.5, 0.5]
+  }
+}
