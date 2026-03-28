@@ -125,6 +125,9 @@ async def lifespan(app: FastAPI):
     os.makedirs(f"{settings.DATA_DIR}/job_executions", exist_ok=True)
     os.makedirs(f"{settings.DATA_DIR}/strategies", exist_ok=True)
     scheduler_manager.start()
+    # Validate cached Notion agent databases (evict stale entries)
+    if notion_bridge.configured:
+        asyncio.create_task(notion_bridge.validate_agent_dbs())
     # Try connecting to OpenClaw Gateway (non-blocking — OK if not running)
     asyncio.create_task(openclaw_bridge.connect())
     yield
@@ -994,6 +997,7 @@ async def notion_status():
     status = await notion_bridge.check_connection()
     status["last_sync"] = notion_bridge.last_sync
     status["cached_task_count"] = len(notion_bridge.get_cached_tasks())
+    status["publish_stats"] = notion_bridge.get_publish_stats()
     return status
 
 

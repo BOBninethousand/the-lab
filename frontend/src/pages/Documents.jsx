@@ -167,6 +167,10 @@ export function Documents() {
       if (latest.type === 'report_updated') {
         loadReports()
       }
+      if (latest.type === 'notion_publish_failed' && latest.data) {
+        setToast(`Notion publish failed: ${latest.data.agent_name} — ${latest.data.error?.slice(0, 80)}`)
+        setTimeout(() => setToast(null), 6000)
+      }
     }
   }, [events])
 
@@ -331,6 +335,33 @@ export function Documents() {
               <span className="text-lab-text-primary font-medium">{stats.today}</span>
             </div>
           </div>
+
+          {/* Notion Publish Health */}
+          {notionStatus && (
+            <div className="border-t border-lab-border pt-4 space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-2">Notion</div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${notionStatus.connected ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                <span className="text-lab-text-secondary">{notionStatus.connected ? 'Connected' : 'Disconnected'}</span>
+              </div>
+              {notionStatus.publish_stats && (
+                <>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-lab-text-secondary">Published</span>
+                    <span className="text-emerald-400 font-medium">{notionStatus.publish_stats.successes}</span>
+                  </div>
+                  {notionStatus.publish_stats.failures > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-lab-text-secondary">Failed</span>
+                      <span className="text-red-400 font-medium" title={notionStatus.publish_stats.last_error || ''}>
+                        {notionStatus.publish_stats.failures}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

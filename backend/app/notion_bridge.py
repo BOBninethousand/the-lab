@@ -18,6 +18,12 @@ AGENT_EMOJIS = {
     "Atlas": "🌐",
     "Zeus": "⚡",
     "Master Chat": "🤖",
+    "Dr Bob": "🩺",
+    "Agent Bob": "💊",
+    "Agent Alice": "🧬",
+    "Agent Charlie": "📊",
+    "Agent Diana": "🫀",
+    "Agent Echo": "🔬",
 }
 
 REPORT_TYPE_EMOJIS = {
@@ -42,6 +48,10 @@ class NotionBridge:
         self._agent_dbs: Dict[str, str] = {}  # agent_name -> notion database_id
         self._agent_dbs_file = f"{settings.DATA_DIR}/notion_agent_dbs.json"
         self._load_agent_dbs()
+        # Publish stats (in-memory, resets on restart)
+        self._publish_successes = 0
+        self._publish_failures = 0
+        self._last_publish_error: Optional[str] = None
 
     def _load_agent_dbs(self):
         if os.path.exists(self._agent_dbs_file):
@@ -116,6 +126,40 @@ class NotionBridge:
         except Exception as e:
             logger.error(f"Error creating Notion DB for {agent_name}: {e}")
             return None
+
+    async def validate_agent_dbs(self):
+        """Check each cached database ID is still accessible. Remove stale entries."""
+        if not self.configured or not self._agent_dbs:
+            return
+        logger.info(f"Validating {len(self._agent_dbs)} cached Notion agent databases...")
+        stale = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for agent_name, db_id in self._agent_dbs.items():
+                try:
+                    resp = await client.get(
+                        f"{self.BASE_URL}/databases/{db_id}",
+                        headers=self._headers(),
+                    )
+                    if resp.status_code != 200:
+                        logger.warning(f"Stale Notion DB for '{agent_name}' (id={db_id[:12]}…): {resp.status_code}")
+                        stale.append(agent_name)
+                except Exception as e:
+                    logger.warning(f"Cannot reach Notion DB for '{agent_name}': {e}")
+                    stale.append(agent_name)
+        if stale:
+            for name in stale:
+                del self._agent_dbs[name]
+            self._save_agent_dbs()
+            logger.info(f"Evicted {len(stale)} stale agent DB entries: {stale}")
+        else:
+            logger.info("All cached Notion agent databases are valid")
+
+    def get_publish_stats(self) -> dict:
+        return {
+            "successes": self._publish_successes,
+            "failures": self._publish_failures,
+            "last_error": self._last_publish_error,
+        }
 
     def _headers(self) -> dict:
         return {
@@ -608,6 +652,29 @@ class NotionBridge:
                 return False
         return True
 
+    def _build_page_data(self, db_id, page_emoji, dated_title, type_label, source_label, initial_blocks, now):
+        """Build the Notion page creation payload."""
+        if db_id:
+            return {
+                "parent": {"database_id": db_id},
+                "icon": {"type": "emoji", "emoji": page_emoji},
+                "properties": {
+                    "Title": {"title": [{"text": {"content": dated_title}}]},
+                    "Type": {"select": {"name": type_label}},
+                    "Date": {"date": {"start": now.strftime("%Y-%m-%d")}},
+                    "Source": {"select": {"name": source_label}},
+                },
+                "children": initial_blocks,
+            }
+        return {
+            "parent": {"page_id": self.database_id},
+            "icon": {"type": "emoji", "emoji": page_emoji},
+            "properties": {
+                "title": {"title": [{"text": {"content": dated_title}}]}
+            },
+            "children": initial_blocks,
+        }
+
     async def publish_report(
         self,
         title: str,
@@ -624,7 +691,8 @@ class NotionBridge:
             agent_icon = AGENT_EMOJIS.get(agent_name, "📋")
             dated_title = f"{agent_icon} {title} — {now.strftime('%d %b')}"
 
-            db_id = await self._get_or_create_agent_db(agent_name or "General")
+            resolved_name = agent_name or "General"
+            db_id = await self._get_or_create_agent_db(resolved_name)
             page_emoji = REPORT_TYPE_EMOJIS.get(report_type, "📄")
 
             type_labels = {
@@ -649,32 +717,10 @@ class NotionBridge:
 
             content_blocks = self._markdown_to_notion_blocks(content)
             all_blocks = header_blocks + content_blocks
-
-            # First 100 blocks go with page creation
             initial_blocks = all_blocks[:100]
             overflow_blocks = all_blocks[100:]
 
-            if db_id:
-                page_data = {
-                    "parent": {"database_id": db_id},
-                    "icon": {"type": "emoji", "emoji": page_emoji},
-                    "properties": {
-                        "Title": {"title": [{"text": {"content": dated_title}}]},
-                        "Type": {"select": {"name": type_label}},
-                        "Date": {"date": {"start": now.strftime("%Y-%m-%d")}},
-                        "Source": {"select": {"name": source_label}},
-                    },
-                    "children": initial_blocks,
-                }
-            else:
-                page_data = {
-                    "parent": {"page_id": self.database_id},
-                    "icon": {"type": "emoji", "emoji": page_emoji},
-                    "properties": {
-                        "title": {"title": [{"text": {"content": dated_title}}]}
-                    },
-                    "children": initial_blocks,
-                }
+            page_data = self._build_page_data(db_id, page_emoji, dated_title, type_label, source_label, initial_blocks, now)
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
@@ -682,20 +728,38 @@ class NotionBridge:
                     headers=self._headers(),
                     json=page_data,
                 )
+
+                # Retry once if stale cache (404/400 on database)
+                if resp.status_code in (400, 404) and db_id and resolved_name in self._agent_dbs:
+                    logger.warning(f"Stale Notion DB for '{resolved_name}' — evicting cache and retrying")
+                    del self._agent_dbs[resolved_name]
+                    self._save_agent_dbs()
+                    db_id = await self._get_or_create_agent_db(resolved_name)
+                    page_data = self._build_page_data(db_id, page_emoji, dated_title, type_label, source_label, initial_blocks, now)
+                    resp = await client.post(
+                        f"{self.BASE_URL}/pages",
+                        headers=self._headers(),
+                        json=page_data,
+                    )
+
                 if resp.status_code == 200:
                     result = resp.json()
                     page_id = result["id"]
                     page_url = result.get("url", "")
 
-                    # Append overflow blocks in batches
                     if overflow_blocks:
                         await self._append_blocks(page_id, overflow_blocks)
 
+                    self._publish_successes += 1
                     logger.info(f"Published to Notion [{agent_name}]: {title} → {page_url}")
                     return page_url
                 else:
+                    self._publish_failures += 1
+                    self._last_publish_error = f"[{agent_name}] {resp.status_code}: {resp.text[:200]}"
                     logger.error(f"Notion publish failed: {resp.status_code} {resp.text[:300]}")
                     return None
         except Exception as e:
+            self._publish_failures += 1
+            self._last_publish_error = f"[{agent_name}] {e}"
             logger.error(f"Notion publish error: {e}")
             return None

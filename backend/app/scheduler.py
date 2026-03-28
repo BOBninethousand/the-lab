@@ -432,27 +432,41 @@ class SchedulerManager:
         if not self.notion_bridge or not self.notion_bridge.configured:
             return
         import asyncio
+
+        async def _publish_and_notify():
+            try:
+                url = await self.notion_bridge.publish_report(
+                    title=title,
+                    content=content,
+                    agent_name=agent_name,
+                    report_type="scheduled",
+                    source="scheduled",
+                )
+                if not url:
+                    error_msg = self.notion_bridge._last_publish_error or "Unknown error"
+                    logger.error(f"Notion publish failed for '{title}': {error_msg}")
+                    self._broadcast_sync("notion_publish_failed", {
+                        "job_name": title,
+                        "agent_name": agent_name,
+                        "error": error_msg,
+                    })
+            except Exception as e:
+                logger.error(f"Notion publish error for '{title}': {e}")
+                self._broadcast_sync("notion_publish_failed", {
+                    "job_name": title,
+                    "agent_name": agent_name,
+                    "error": str(e),
+                })
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                loop.call_soon_threadsafe(
-                    asyncio.ensure_future,
-                    self.notion_bridge.publish_report(
-                        title=title,
-                        content=content,
-                        agent_name=agent_name,
-                        report_type="scheduled",
-                        source="scheduled",
-                    ),
-                )
+                loop.call_soon_threadsafe(asyncio.ensure_future, _publish_and_notify())
                 logger.info(f"Notion publish queued for: {title}")
             else:
-                asyncio.run(self.notion_bridge.publish_report(
-                    title=title, content=content, agent_name=agent_name,
-                    report_type="scheduled", source="scheduled",
-                ))
+                asyncio.run(_publish_and_notify())
         except Exception as e:
-            logger.warning(f"Notion publish failed for job '{title}': {e}")
+            logger.error(f"Notion publish scheduling failed for '{title}': {e}")
 
     def _resolve_agent(self, agent_id: str, job_config: dict):
         """Resolve agent by ID, falling back to name-based lookup."""
