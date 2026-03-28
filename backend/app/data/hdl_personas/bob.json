@@ -28,6 +28,15 @@
     "health_goals": "Improve sleep quality, increase flexibility",
     "medications": "None",
     "family_history": "Father had type 2 diabetes at 60",
+    "health_form": {
+      "fitness": {"dailySteps": 3, "physicalActivity": 3, "carryAbility": 3, "runStairs": 3, "floorGetUp": 3, "touchToes": 2},
+      "diet": {"dietQuality": 3, "drinkChoice": 3, "digestiveDiscomfort": 2, "digestiveHealth": 4, "bowelMovements": 4, "smoking": 5, "alcohol": 3},
+      "mental": {"handleStress": 3, "sleepQuality": 2, "concentration": 3, "mentalFatigue": 3, "relationshipSupport": 4, "qualityTime": 3, "emotionalExpression": 3},
+      "medical": {"currentHealth": 4, "longTermHealth": 4, "familyHistory": 3, "recentIssues": 4, "physicalRestrictions": 3, "currentMedications": 5},
+      "physicalIssues": "Lower back pain when sitting for long periods",
+      "bodyFatPercent": "22",
+      "muscleMassKg": "62"
+    },
     "scores": {
       "physicalActivity": 3.5,
       "sleepDuration": 3.0,

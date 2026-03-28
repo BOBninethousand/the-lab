@@ -28,6 +28,15 @@
     "health_goals": "Reduce stress, maintain flexibility",
     "medications": "Occasional ibuprofen for headaches",
     "family_history": "Mother had breast cancer at 55",
+    "health_form": {
+      "fitness": {"dailySteps": 4, "physicalActivity": 4, "carryAbility": 3, "runStairs": 3, "floorGetUp": 4, "touchToes": 4},
+      "diet": {"dietQuality": 4, "drinkChoice": 4, "digestiveDiscomfort": 2, "digestiveHealth": 4, "bowelMovements": 4, "smoking": 5, "alcohol": 4},
+      "mental": {"handleStress": 2, "sleepQuality": 3, "concentration": 3, "mentalFatigue": 3, "relationshipSupport": 4, "qualityTime": 3, "hormonalMoodChanges": 3},
+      "medical": {"currentHealth": 4, "longTermHealth": 4, "familyHistory": 2, "recentIssues": 4, "physicalRestrictions": 5, "currentMedications": 4},
+      "physicalIssues": "Occasional tension headaches",
+      "bodyFatPercent": "26",
+      "muscleMassKg": "44"
+    },
     "scores": {
       "physicalActivity": 4.0,
       "sleepDuration": 3.5,

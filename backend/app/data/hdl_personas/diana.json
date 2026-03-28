@@ -28,6 +28,15 @@
     "health_goals": "Manage blood pressure naturally, improve sleep",
     "medications": "Low-dose ACE inhibitor, magnesium supplement",
     "family_history": "Mother had hypertension, grandmother had osteoporosis",
+    "health_form": {
+      "fitness": {"dailySteps": 2, "physicalActivity": 2, "carryAbility": 2, "runStairs": 2, "floorGetUp": 2, "touchToes": 2},
+      "diet": {"dietQuality": 3, "drinkChoice": 3, "digestiveDiscomfort": 3, "digestiveHealth": 3, "bowelMovements": 3, "smoking": 4, "alcohol": 4},
+      "mental": {"handleStress": 3, "sleepQuality": 2, "concentration": 3, "mentalFatigue": 2, "relationshipSupport": 3, "qualityTime": 3, "hormonalMoodChanges": 2},
+      "medical": {"currentHealth": 3, "longTermHealth": 3, "familyHistory": 2, "recentIssues": 3, "physicalRestrictions": 3, "currentMedications": 3},
+      "physicalIssues": "Elevated blood pressure, reduced flexibility, perimenopause symptoms",
+      "bodyFatPercent": "32",
+      "muscleMassKg": "40"
+    },
     "scores": {
       "physicalActivity": 2.5,
       "sleepDuration": 2.5,

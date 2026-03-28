@@ -28,6 +28,15 @@
     "health_goals": "Lose 15kg, build exercise habit, reverse pre-diabetes",
     "medications": "None yet, monitoring blood sugar",
     "family_history": "Father had type 2 diabetes at 50, mother has high cholesterol",
+    "health_form": {
+      "fitness": {"dailySteps": 1, "physicalActivity": 1, "carryAbility": 2, "runStairs": 1, "floorGetUp": 2, "touchToes": 1},
+      "diet": {"dietQuality": 2, "drinkChoice": 2, "digestiveDiscomfort": 3, "digestiveHealth": 3, "bowelMovements": 3, "smoking": 5, "alcohol": 2},
+      "mental": {"handleStress": 2, "sleepQuality": 3, "concentration": 2, "mentalFatigue": 2, "relationshipSupport": 2, "qualityTime": 2, "emotionalExpression": 2},
+      "medical": {"currentHealth": 3, "longTermHealth": 3, "familyHistory": 2, "recentIssues": 3, "physicalRestrictions": 3, "currentMedications": 4},
+      "physicalIssues": "Sedentary lifestyle, pre-diabetic markers, low stamina, knee discomfort when climbing stairs",
+      "bodyFatPercent": "30",
+      "muscleMassKg": "55"
+    },
     "scores": {
       "physicalActivity": 1.5,
       "sleepDuration": 3.0,

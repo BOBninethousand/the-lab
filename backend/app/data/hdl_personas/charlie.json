@@ -28,6 +28,15 @@
     "health_goals": "Optimize performance, test different nutrition approaches",
     "medications": "Creatine, protein powder",
     "family_history": "No significant family history",
+    "health_form": {
+      "fitness": {"dailySteps": 5, "physicalActivity": 5, "carryAbility": 4, "runStairs": 4, "floorGetUp": 5, "touchToes": 3},
+      "diet": {"dietQuality": 3, "drinkChoice": 4, "digestiveDiscomfort": 3, "digestiveHealth": 3, "bowelMovements": 4, "smoking": 5, "alcohol": 3},
+      "mental": {"handleStress": 4, "sleepQuality": 4, "concentration": 3, "mentalFatigue": 4, "relationshipSupport": 4, "qualityTime": 4, "emotionalExpression": 3},
+      "medical": {"currentHealth": 5, "longTermHealth": 5, "familyHistory": 5, "recentIssues": 4, "physicalRestrictions": 4, "currentMedications": 5},
+      "physicalIssues": "Occasional joint pain from CrossFit training",
+      "bodyFatPercent": "14",
+      "muscleMassKg": "68"
+    },
     "scores": {
       "physicalActivity": 4.5,
       "sleepDuration": 3.5,
