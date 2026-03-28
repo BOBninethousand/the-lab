@@ -11,6 +11,7 @@ Install: Copy to backend/app/tools/hdl_form_builders.py in The Lab repo.
 import math
 import random
 import json
+import urllib.parse
 from datetime import datetime
 from typing import Optional
 
@@ -273,6 +274,48 @@ def build_longevity_form_data(persona: dict, submission_history: list = None) ->
     }
 
 
+def _quickchart_radar_url(labels: list, values: list, title: str = "Scores") -> str:
+    """Generate a QuickChart.io radar chart URL from labels and values."""
+    config = {
+        "type": "radar",
+        "data": {
+            "labels": labels,
+            "datasets": [{
+                "label": title,
+                "data": values,
+                "backgroundColor": "rgba(0,123,127,0.2)",
+                "borderColor": "#007B7F",
+                "pointBackgroundColor": "#007B7F",
+            }],
+        },
+        "options": {
+            "scale": {"ticks": {"min": 0, "max": 5, "stepSize": 1}},
+            "plugins": {"title": {"display": True, "text": title}},
+        },
+    }
+    return "https://quickchart.io/chart?w=400&h=300&c=" + urllib.parse.quote(json.dumps(config))
+
+
+def _quickchart_bar_url(labels: list, values: list, title: str = "Scores") -> str:
+    """Generate a QuickChart.io bar chart URL."""
+    config = {
+        "type": "bar",
+        "data": {
+            "labels": labels,
+            "datasets": [{
+                "label": title,
+                "data": values,
+                "backgroundColor": ["#007B7F", "#27ae60", "#e74c3c", "#f39c12", "#3498db", "#9b59b6"],
+            }],
+        },
+        "options": {
+            "scales": {"y": {"min": 0, "max": 5}},
+            "plugins": {"title": {"display": True, "text": title}},
+        },
+    }
+    return "https://quickchart.io/chart?w=400&h=250&c=" + urllib.parse.quote(json.dumps(config))
+
+
 def _health_score_text(value: int, labels: dict) -> str:
     """Map a 1-5 score value to its human-readable label."""
     return labels.get(value, labels.get(3, "Average"))
@@ -489,8 +532,16 @@ def build_health_form_data(persona: dict, submission_history: list = None) -> di
                 "diastolic": dia_score,
                 "heartRate": hr_score,
             },
-            "chartImage": "",
-            "summaryChartImage": "",
+            "chartImage": _quickchart_radar_url(
+                ["BMI", "WHR", "Systolic", "Diastolic", "Heart Rate"],
+                [bmi_score, whr_score, sys_score, dia_score, hr_score],
+                "Body Composition"
+            ),
+            "summaryChartImage": _quickchart_bar_url(
+                ["BMI", "WHR", "Systolic BP", "Diastolic BP", "Heart Rate"],
+                [bmi_score, whr_score, sys_score, dia_score, hr_score],
+                "Body Composition Summary"
+            ),
         },
 
         "fitness": {
@@ -513,8 +564,16 @@ def build_health_form_data(persona: dict, submission_history: list = None) -> di
                 "zone2": zone2_score,
                 "zone5": zone5_score,
             },
-            "chartImage": "",
-            "summaryChartImage": "",
+            "chartImage": _quickchart_radar_url(
+                ["Flexibility", "Strength", "Zone 2 Cardio", "Zone 5 Intensity"],
+                [flex_score, strength_score, zone2_score, zone5_score],
+                "Fitness Assessment"
+            ),
+            "summaryChartImage": _quickchart_bar_url(
+                ["Flexibility", "Strength", "Zone 2", "Zone 5"],
+                [flex_score, strength_score, zone2_score, zone5_score],
+                "Fitness Summary"
+            ),
         },
 
         "dietLifestyle": {
@@ -543,8 +602,16 @@ def build_health_form_data(persona: dict, submission_history: list = None) -> di
                 "smoking": int(smoking_val),
                 "alcohol": int(alcohol_val),
             },
-            "chartImage": "",
-            "summaryChartImage": "",
+            "chartImage": _quickchart_radar_url(
+                ["Digestive Comfort", "Digestive Health", "Bowel Movements", "Smoking", "Alcohol"],
+                [int(digestive_discomfort_val), int(digestive_health_val), int(bowel_movements_val), int(smoking_val), int(alcohol_val)],
+                "Diet & Lifestyle"
+            ),
+            "summaryChartImage": _quickchart_bar_url(
+                ["Digestive", "Digestion Health", "Bowel", "Smoking", "Alcohol"],
+                [int(digestive_discomfort_val), int(digestive_health_val), int(bowel_movements_val), int(smoking_val), int(alcohol_val)],
+                "Diet & Lifestyle Summary"
+            ),
         },
 
         "mentalWellbeing": {
@@ -572,8 +639,16 @@ def build_health_form_data(persona: dict, submission_history: list = None) -> di
                 "relationshipSupport": int(relationship_support_val),
                 "qualityTime": int(quality_time_val),
             },
-            "chartImage": "",
-            "summaryChartImage": "",
+            "chartImage": _quickchart_radar_url(
+                ["Stress Handling", "Sleep Quality", "Concentration", "Mental Fatigue", "Support", "Quality Time"],
+                [int(handle_stress_val), int(sleep_quality_val), int(concentration_val), int(mental_fatigue_val), int(relationship_support_val), int(quality_time_val)],
+                "Mental & Emotional Wellbeing"
+            ),
+            "summaryChartImage": _quickchart_bar_url(
+                ["Stress", "Sleep", "Focus", "Fatigue", "Support", "Quality Time"],
+                [int(handle_stress_val), int(sleep_quality_val), int(concentration_val), int(mental_fatigue_val), int(relationship_support_val), int(quality_time_val)],
+                "Mental Wellbeing Summary"
+            ),
         },
 
         "medicalDetails": {
@@ -601,8 +676,16 @@ def build_health_form_data(persona: dict, submission_history: list = None) -> di
                 "physicalRestrictions": int(physical_restrictions_val),
                 "currentMedications": int(current_medications_val),
             },
-            "chartImage": "",
-            "summaryChartImage": "",
+            "chartImage": _quickchart_radar_url(
+                ["Current Health", "Long-term", "Family History", "Recent Issues", "Physical", "Medications"],
+                [int(current_health_val), int(longterm_health_val), int(family_history_val), int(recent_issues_val), int(physical_restrictions_val), int(current_medications_val)],
+                "Medical Details"
+            ),
+            "summaryChartImage": _quickchart_bar_url(
+                ["Current", "Long-term", "Family", "Recent", "Physical", "Meds"],
+                [int(current_health_val), int(longterm_health_val), int(family_history_val), int(recent_issues_val), int(physical_restrictions_val), int(current_medications_val)],
+                "Medical Details Summary"
+            ),
         },
 
         "genderSpecificHealth": {
@@ -635,7 +718,11 @@ def build_health_form_data(persona: dict, submission_history: list = None) -> di
                 "mentalWellbeing": mental_score,
                 "medicalDetails": medical_score,
             },
-            "chartImage": "",
+            "chartImage": _quickchart_radar_url(
+                ["Body Composition", "Fitness", "Diet & Lifestyle", "Mental Wellbeing", "Medical Details"],
+                [body_comp_score / 20, fitness_score / 20, diet_score / 20, mental_score / 20, medical_score / 20],
+                "Overall Health"
+            ),
         },
 
         "metadata": {
