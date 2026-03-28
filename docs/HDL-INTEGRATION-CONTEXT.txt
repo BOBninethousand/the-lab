@@ -1,0 +1,320 @@
+# HDL Integration — Complete Context for The Lab
+
+This document describes everything that was built, deployed, and is now live for The Lab to interact with the HealthDataLab WordPress backend. Use this as context when building agent tools, skills, and cron jobs in The Lab.
+
+---
+
+## What Was Built
+
+An end-to-end integration that lets The Lab's AI agents act as **synthetic health patients**. 1 practitioner + 5 client agents can submit real health and longevity assessments to HealthDataLab's WordPress backend, trigger real Make.com PDF report generation, and have their data appear on the practitioner's dashboard — exactly like real users.
+
+---
+
+## Architecture
+
+```
+The Lab (M1 Mac, FastAPI)
+    │
+    ├── hdl_tools.py ──────► REST API ──────► WordPress (healthdatalab.net)
+    │   (submit forms,          │                  │
+    │    check status,          │              ┌───┴────────────┐
+    │    reset credits)         │              │ class-lab-test- │
+    │                           │              │ api.php         │
+    │                           │              │  ├─ auth        │
+    │                           │              │  ├─ credits     │
+    │                           │              │  ├─ tracker     │
+    │                           │              │  └─ Make.com ───┼──► PDF emailed
+    │                           │              └────────────────┘
+    │
+    ├── hdl_form_builders.py    (generates realistic form data from personas)
+    │
+    ├── hdl_personas/*.json     (5 agent health profiles with progression rules)
+    │
+    └── SSH (optional) ────► labagent@server (read-only diagnostics)
+```
+
+---
+
+## What's Live on the Server RIGHT NOW
+
+### REST API Endpoints (all tested and working)
+
+Base URL: `https://healthdatalab.net/wp-json/hdl/v1/lab/`
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/lab/submit-health` | POST | Submit health assessment, deduct 1 health credit, store in tracker, forward to Make.com |
+| `/lab/submit-longevity` | POST | Submit longevity assessment, deduct 1 longevity credit, store in tracker, forward to Make.com (triggers PDF email) |
+| `/lab/user-status` | GET | Return credits, daily usage, last submission date, user meta |
+| `/lab/reset-credits` | POST | Top up credits for the practitioner pool (capped at 500/call) |
+
+**Authentication:** Every request requires header `X-HDL-Lab-Key: 0489ce83f7e16a33c05c29a96bde97e36c12ee12cde41c6d9d10aded9609887e`
+
+**Security layers:**
+- API key verified with `hash_equals()` (timing-safe)
+- Kill switch: `HDL_LAB_ENABLED` constant in wp-config.php (set `false` to disable everything)
+- Email whitelist: only `260128vm+<name>@gmail.com` accepted (server-side regex)
+- Rate limit: 20 requests/hour total via `HDL_Rate_Limiter`
+- Audit log: every request logged to `wp_hdl_lab_audit_log` table
+
+### WordPress Users (all approved, all active)
+
+| ID | Username | Display Name | Email | Role | Practitioner |
+|----|----------|-------------|-------|------|-------------|
+| 117 | Bob | Bob 9000 | 260128vm+practitioner@gmail.com | um_practitioner | — (IS the practitioner) |
+| 166 | bobagent | Agent Bob | 260128vm+bob@gmail.com | um_client | 117 |
+| 167 | aliceagent | Agent Alice | 260128vm+alice@gmail.com | um_client | 117 |
+| 168 | charlieagent | Agent Charlie | 260128vm+charlie@gmail.com | um_client | 117 |
+| 169 | dianaagent | Agent Diana | 260128vm+diana@gmail.com | um_client | 117 |
+| 170 | echoagent | Agent Echo | 260128vm+echo@gmail.com | um_client | 117 |
+
+- All users have `hdl_source = "the_lab"` meta tag
+- All clients have `hdl_invited_by_practitioner = 117`
+- All clients linked in `wp_health_tracker_practitioner_clients` table (rows 70-74)
+- Both `account_status` and `pw_user_status` = "approved"
+- Practitioner can see all 5 agents in their dashboard
+
+### Credit System
+
+All 5 clients draw from practitioner 117's credit pool:
+- **Health credits:** 597 available
+- **Longevity credits:** 568 available
+- At 12 submissions/week, this is ~50 weeks of runway
+- Use `reset-credits` endpoint to top up when low
+
+### SSH Diagnostics (labagent user)
+
+A restricted Linux user `labagent` exists on the server with 5 read-only commands:
+
+| Command | What it does |
+|---------|-------------|
+| `ping` | Returns "pong" — connectivity check |
+| `check-credits <email>` | Shows credit balance for a test user |
+| `check-user <email>` | Shows user details and key meta |
+| `tail-logs` | Last 50 lines of WordPress debug.log |
+| `recent-submissions <email>` | Last 10 form submissions |
+
+**SSH key not yet installed** — needs to be generated on M1 (see setup steps below).
+
+### Audit Trail
+
+Every Lab API call is logged to `wp_hdl_lab_audit_log`:
+- Columns: `id`, `timestamp`, `action`, `email`, `agent_name`, `ip_address`, `details_json`, `success`
+- Currently has 1 entry (the credit reset test from deployment)
+- Query: `wp db query "SELECT * FROM wp_hdl_lab_audit_log ORDER BY id DESC LIMIT 20"`
+
+---
+
+## Files Pushed to The Lab Repo (commit 29d9db1)
+
+These files are now in the `main` branch. Run `git pull` on M1 to get them.
+
+### `backend/app/tools/hdl_tools.py`
+
+5 agent-callable functions:
+
+```python
+from hdl_tools import (
+    submit_health_assessment,      # POST /lab/submit-health
+    submit_longevity_assessment,   # POST /lab/submit-longevity  (triggers Make.com PDF!)
+    check_user_status,             # GET  /lab/user-status
+    reset_credits,                 # POST /lab/reset-credits
+    ssh_diagnostics,               # SSH  read-only commands
+)
+```
+
+**Configuration (reads from environment):**
+- `HDL_LAB_API_KEY` — must be set in `.env`
+- SSH key at `~/.ssh/id_ed25519_labagent` (for diagnostics only)
+- API base: `https://healthdatalab.net/wp-json/hdl/v1/lab`
+
+**Email validation:** Every function validates the email matches `260128vm+<name>@gmail.com` before making any request.
+
+**Example usage:**
+```python
+# Check Bob's status
+status = check_user_status("260128vm+bob@gmail.com")
+# Returns: {"success": true, "user_id": 166, "credits": {"health": 597, "longevity": 568}, ...}
+
+# Submit longevity assessment (triggers PDF!)
+result = submit_longevity_assessment("260128vm+bob@gmail.com", complete_data, "bob")
+# Returns: {"success": true, "submission_id": "...", "make_status": "sent"}
+
+# Top up credits
+reset_credits("260128vm+bob@gmail.com", amount=100)
+# Returns: {"success": true, "credits": {"health": 697, "longevity": 668}}
+```
+
+### `backend/app/tools/hdl_form_builders.py`
+
+Generates realistic form data from persona configs:
+
+```python
+from hdl_form_builders import build_health_form_data, build_longevity_form_data
+
+# Load persona
+import json
+with open("backend/app/data/hdl_personas/bob.json") as f:
+    persona = json.load(f)
+
+# Generate health form data
+health_data = build_health_form_data(persona, submission_history=[])
+
+# Generate longevity form data (includes BMI, WHR, biological age calculations)
+longevity_data = build_longevity_form_data(persona, submission_history=[])
+```
+
+**What it calculates:**
+- BMI and category (Underweight/Normal/Overweight/Obese)
+- Waist-hip ratio and risk category
+- Biological age, age shift, aging rate (from 16 lifestyle scores)
+- Lifestyle score average
+- Overall health percentage
+
+**Progression system:** Each call applies the persona's trajectory rules:
+- `improving` agents show gradual improvements in focus areas
+- `declining` agents show gradual worsening
+- `stable` agents stay roughly the same
+- Random variance adds realistic noise to every submission
+
+### `backend/app/data/hdl_personas/` (5 JSON files)
+
+| File | Agent | Age/Gender | Health Profile | Trajectory |
+|------|-------|-----------|----------------|-----------|
+| `bob.json` | Agent Bob | 35M, 82kg | Moderate fitness, back pain, insomnia | **Improving** — sleep, activity, balance |
+| `alice.json` | Agent Alice | 42F, 62kg | Good health, chronic work stress | **Stable** — stress management focus |
+| `charlie.json` | Agent Charlie | 28M, 78kg | Very active, experimenting with diets | **Improving** — diet quality, cognition |
+| `diana.json` | Agent Diana | 55F, 70kg | Elevated BP, perimenopause, declining sleep | **Declining** — sleep worsening |
+| `echo.json` | Agent Echo | 38M, 95kg | Sedentary, overweight, pre-diabetic | **Rapidly improving** — exercise, diet, hydration |
+
+Each persona has:
+- Base demographics (height, weight, BP, heart rate)
+- 16 lifestyle scores (0-5 scale)
+- Progression rules (direction, focus areas, change rate)
+- Variance parameters (realistic noise ranges)
+
+### `backend/app/skills/hdl_weekly_health_check.json`
+
+8-step CrewAI skill workflow:
+
+1. **load_persona** — Read agent persona JSON
+2. **check_credits** — Verify credits, auto-reset if below 10
+3. **generate_health_data** — LLM generates health form from persona + history
+4. **submit_health** — POST to HDL, record submission_id
+5. **generate_longevity_data** — LLM generates longevity form with scores
+6. **submit_longevity** — POST to HDL, triggers Make.com PDF
+7. **verify** — Check credits decreased, submissions landed
+8. **log_to_notion** — Record results in Notion database
+
+**Cron schedule (staggered across the week):**
+```
+Mon 10:00  → Bob          Mon 14:00  → Alice
+Wed 11:00  → Charlie      Wed 15:00  → Diana
+Fri 10:00  → Echo         Fri 14:00  → Bob (2nd)
+```
+
+---
+
+## Setup Steps for M1 Mac
+
+### 1. Pull the code
+```bash
+cd /path/to/the-lab
+git pull origin main
+```
+
+### 2. Add API key to `.env`
+```
+HDL_LAB_API_KEY=0489ce83f7e16a33c05c29a96bde97e36c12ee12cde41c6d9d10aded9609887e
+```
+
+### 3. Generate SSH key (for diagnostics — optional)
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_labagent -C "labagent@the-lab" -N ""
+```
+Then install the public key on the server:
+```bash
+ssh healthdatalab.net "echo 'command=\"/home/labagent/scripts/gate.sh\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $(cat ~/.ssh/id_ed25519_labagent.pub)' > /home/labagent/.ssh/authorized_keys && chown labagent:labagent /home/labagent/.ssh/authorized_keys && chmod 600 /home/labagent/.ssh/authorized_keys"
+```
+
+### 4. Smoke test
+```python
+import os, json
+os.environ["HDL_LAB_API_KEY"] = "0489ce83f7e16a33c05c29a96bde97e36c12ee12cde41c6d9d10aded9609887e"
+
+from backend.app.tools.hdl_tools import check_user_status, submit_longevity_assessment
+from backend.app.tools.hdl_form_builders import build_longevity_form_data
+
+# Verify API connection
+status = check_user_status("260128vm+bob@gmail.com")
+print(f"Bob's credits: health={status['credits']['health']}, longevity={status['credits']['longevity']}")
+
+# Full test (triggers real PDF email to 260128vm@gmail.com!)
+with open("backend/app/data/hdl_personas/bob.json") as f:
+    persona = json.load(f)
+data = build_longevity_form_data(persona)
+result = submit_longevity_assessment("260128vm+bob@gmail.com", data, "bob")
+print(f"Result: {result}")
+```
+
+---
+
+## Verification Checklist
+
+Run these to confirm everything is connected:
+
+### From The Lab (Python)
+```python
+# 1. API responds
+status = check_user_status("260128vm+bob@gmail.com")
+assert status["success"] == True
+assert status["practitioner_id"] == "117"
+
+# 2. All 5 agents exist
+for name in ["bob", "alice", "charlie", "diana", "echo"]:
+    s = check_user_status(f"260128vm+{name}@gmail.com")
+    assert s["success"] == True, f"{name} not found"
+    assert s["credit_owner_id"] == 117, f"{name} not linked to practitioner"
+    print(f"✓ {name} (ID {s['user_id']}) → practitioner 117")
+
+# 3. Credits available
+assert status["credits"]["health"] > 0
+assert status["credits"]["longevity"] > 0
+
+# 4. Form builder produces valid data
+from backend.app.tools.hdl_form_builders import build_longevity_form_data
+import json
+with open("backend/app/data/hdl_personas/bob.json") as f:
+    persona = json.load(f)
+data = build_longevity_form_data(persona)
+assert "scores" in data
+assert "biologicalAge" in data
+assert "bmi" in data
+assert len(data["scores"]) >= 16
+print(f"✓ Form data valid: bio_age={data['biologicalAge']}, bmi={data['bmi']}")
+```
+
+### From curl (API health check)
+```bash
+curl -s "https://healthdatalab.net/wp-json/hdl/v1/lab/user-status?email=260128vm%2Bbob@gmail.com" \
+  -H "X-HDL-Lab-Key: 0489ce83f7e16a33c05c29a96bde97e36c12ee12cde41c6d9d10aded9609887e"
+```
+
+---
+
+## Key Constraints
+
+- **Rate limit:** 20 API calls/hour total — stagger agent submissions
+- **Credit pool:** 597 health / 568 longevity remaining — use `reset_credits()` to top up
+- **Make.com:** Each longevity submission triggers a real PDF — ~6/week is safe (2.4% of free tier)
+- **Email whitelist:** Only `260128vm+<name>@gmail.com` emails accepted — hardcoded server-side
+- **Audit:** Every API call logged to `wp_hdl_lab_audit_log` with agent name and timestamp
+- **Kill switch:** If anything goes wrong, set `HDL_LAB_ENABLED = false` in wp-config.php
+
+---
+
+## Gist IDs (for future WordPress updates)
+
+| Gist ID | File |
+|---------|------|
+| `789d5081711434f971266270b0246a0b` | `class-lab-test-api.php` |
