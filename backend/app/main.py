@@ -81,8 +81,10 @@ agent_manager.memory_engine = {
     "build_context": build_context,
 }
 
-# Wire correction manager into scheduler for feedback → correction pipeline
+# Wire managers into scheduler for memory, learning, and correction pipelines
 scheduler_manager.correction_manager = correction_manager
+scheduler_manager.knowledge_manager = knowledge_manager
+scheduler_manager.agent_memory_manager = agent_memory_manager
 
 # Notion integration
 notion_bridge = NotionBridge()
@@ -108,6 +110,67 @@ master_chat = MasterChat(
     ws_manager=ws_manager,
     skill_manager=skill_manager,
 )
+scheduler_manager.master_chat = master_chat
+
+
+async def _seed_hdl_knowledge():
+    """Seed HDL knowledge base entries on first startup."""
+    try:
+        existing = knowledge_manager.get_all(tag="hdl-system-seeded")
+        if existing:
+            return  # Already seeded
+        from app.models import KnowledgeCreate
+        seeds = [
+            KnowledgeCreate(
+                title="HDL API Reference",
+                content=(
+                    "HealthDataLab REST API at https://healthdatalab.net/wp-json/hdl/v1/lab/. "
+                    "Four endpoints: submit-health (POST), submit-longevity (POST, triggers Make.com PDF), "
+                    "user-status (GET), reset-credits (POST, max 500/call). All require X-HDL-Lab-Key header. "
+                    "Rate limit: 20 requests/hour. Emails must match 260128vm+name@gmail.com pattern."
+                ),
+                tags=["hdl", "api", "healthdatalab", "hdl-system-seeded"],
+                category="reference",
+            ),
+            KnowledgeCreate(
+                title="HDL Test Personas",
+                content=(
+                    "5 test clients under practitioner Bob (ID 117): Agent Bob (35M, improving), "
+                    "Agent Alice (42F, stable), Agent Charlie (28M, improving), Agent Diana (55F, declining), "
+                    "Agent Echo (38M, rapidly improving). Each has unique health conditions and trajectory. "
+                    "Persona JSONs in backend/app/data/hdl_personas/."
+                ),
+                tags=["hdl", "personas", "agents", "hdl-system-seeded"],
+                category="reference",
+            ),
+            KnowledgeCreate(
+                title="HDL Safety Rules",
+                content=(
+                    "ALWAYS check credits before submitting. If credits below 50, reset first. "
+                    "NEVER submit for emails outside 260128vm+*@gmail.com. Maximum 20 API calls per hour "
+                    "\u2014 stagger submissions. Each longevity submission triggers a real PDF email via Make.com. "
+                    "Monitor credit pool carefully."
+                ),
+                tags=["hdl", "safety", "submissions", "hdl-system-seeded"],
+                category="rule",
+            ),
+            KnowledgeCreate(
+                title="HDL Report Formatting",
+                content=(
+                    "HDL reports in Notion should include: submission date, persona name, form type "
+                    "(health/longevity), submission ID, credits remaining after submission, any errors encountered. "
+                    "Use bullet points for per-agent results. Start with a summary line showing overall "
+                    "pass/fail status and total credits remaining."
+                ),
+                tags=["hdl", "notion", "formatting", "reports", "hdl-system-seeded"],
+                category="preference",
+            ),
+        ]
+        for seed in seeds:
+            await knowledge_manager.add(seed)
+        logger.info(f"Seeded {len(seeds)} HDL knowledge base entries")
+    except Exception as e:
+        logger.warning(f"HDL knowledge seeding failed: {e}")
 
 
 @asynccontextmanager
@@ -128,6 +191,8 @@ async def lifespan(app: FastAPI):
     # Validate cached Notion agent databases (evict stale entries)
     if notion_bridge.configured:
         asyncio.create_task(notion_bridge.validate_agent_dbs())
+    # Seed HDL knowledge base (runs once, checks for existing entries)
+    asyncio.create_task(_seed_hdl_knowledge())
     # Try connecting to OpenClaw Gateway (non-blocking — OK if not running)
     asyncio.create_task(openclaw_bridge.connect())
     yield

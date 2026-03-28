@@ -170,6 +170,127 @@ BUILT_IN_SKILLS = {
             },
         ],
     },
+    "research_and_publish": {
+        "id": "research_and_publish",
+        "name": "research_and_publish",
+        "description": "Scout researches a topic, Quill writes an article based on the findings, then publishes to Notion.",
+        "builtin": True,
+        "params": ["topic"],
+        "steps": [
+            {
+                "label": "Scout researches the topic",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Scout",
+                    "message": "Research {param.topic} thoroughly. Find key data points, trends, and insights. Structure your findings as a research brief with sources where possible.",
+                },
+            },
+            {
+                "label": "Quill writes an article from the research",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Quill",
+                    "message": "Based on this research, write a compelling article for the HealthDataLab blog. Use British English, no fluff, direct and sharp. Research findings:\n\n{prev_result}",
+                },
+            },
+            {
+                "label": "Publish the article to Notion",
+                "tool_name": "publish_to_notion",
+                "args": {
+                    "title": "Article: {param.topic}",
+                    "content": "{prev_result}",
+                    "agent_name": "Quill",
+                    "report_type": "content",
+                },
+            },
+        ],
+    },
+    "outreach_campaign": {
+        "id": "outreach_campaign",
+        "name": "outreach_campaign",
+        "description": "Scout finds leads, Radar drafts outreach, Quill polishes the copy, then publishes to Notion.",
+        "builtin": True,
+        "params": ["target_market"],
+        "steps": [
+            {
+                "label": "Scout identifies leads",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Scout",
+                    "message": "Find 5 potential leads in the {param.target_market} market for HealthDataLab. Include company names, key contacts, and why they'd benefit from HDL.",
+                },
+            },
+            {
+                "label": "Radar drafts outreach messages",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Radar",
+                    "message": "Draft personalised outreach messages for each of these leads. Use warm, collegial tone. Max 2-3 touches for non-responders. Scout's research:\n\n{prev_result}",
+                },
+            },
+            {
+                "label": "Quill polishes the copy",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Quill",
+                    "message": "Review and polish these outreach messages. Make them compelling, professional, and on-brand for HealthDataLab. No fluff, direct. Draft messages:\n\n{prev_result}",
+                },
+            },
+            {
+                "label": "Publish campaign to Notion",
+                "tool_name": "publish_to_notion",
+                "args": {
+                    "title": "Outreach Campaign: {param.target_market}",
+                    "content": "{prev_result}",
+                    "agent_name": "Radar",
+                    "report_type": "outreach",
+                },
+            },
+        ],
+    },
+    "hdl_weekly_digest": {
+        "id": "hdl_weekly_digest",
+        "name": "hdl_weekly_digest",
+        "description": "Dr Bob reviews the HDL pool, Scout analyses trends, Quill writes a summary report, then publishes to Notion.",
+        "builtin": True,
+        "params": [],
+        "steps": [
+            {
+                "label": "Dr Bob reviews the test pool",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Dr Bob",
+                    "message": "Check the credit balance and submission status for all 5 HDL test clients. List any missed submissions, anomalies, or flags. Include trajectory trends.",
+                },
+            },
+            {
+                "label": "Scout analyses health trends",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Scout",
+                    "message": "Analyse these HDL test results for trends. Are improving patients actually improving? Are declining patients showing expected patterns? What are the key takeaways? Dr Bob's report:\n\n{prev_result}",
+                },
+            },
+            {
+                "label": "Quill writes the weekly digest",
+                "tool_name": "chat_with_agent",
+                "args": {
+                    "agent_name": "Quill",
+                    "message": "Write a professional weekly health digest summarising the HDL test panel status. Include credit levels, submission compliance, and health trend analysis. Use British English, direct, sharp. Analysis:\n\n{prev_result}",
+                },
+            },
+            {
+                "label": "Publish digest to Notion",
+                "tool_name": "publish_to_notion",
+                "args": {
+                    "title": "HDL Weekly Digest",
+                    "content": "{prev_result}",
+                    "agent_name": "Dr Bob",
+                    "report_type": "weekly_review",
+                },
+            },
+        ],
+    },
 }
 
 

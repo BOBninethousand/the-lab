@@ -1521,6 +1521,17 @@ class MasterChat:
         # Build dynamic agent list
         agents = self.agent_manager.list_agents()
         agent_list = "\n".join(f"- **{a.name}** — {a.role}" for a in agents)
+        # Add cross-agent recent learnings for smarter orchestration
+        try:
+            cross_items = []
+            for a in agents:
+                recent = self.agent_memory_manager.get_recent(a.id, limit=2)
+                for mem in recent:
+                    cross_items.append(f"[{a.name}] {mem.content}")
+            if cross_items:
+                memory_context += "\n\n<recent_agent_learnings>\n" + "\n".join(cross_items[:10]) + "\n</recent_agent_learnings>"
+        except Exception:
+            pass
         system_prompt = SYSTEM_PROMPT.replace("{agent_list}", agent_list or "No agents configured yet.")
         system_prompt = system_prompt.replace("{memory_context}", memory_context or "No memory context available.")
 
@@ -1652,6 +1663,17 @@ class MasterChat:
         # Build dynamic agent list
         agents = self.agent_manager.list_agents()
         agent_list = "\n".join(f"- **{a.name}** — {a.role}" for a in agents)
+        # Add cross-agent recent learnings for smarter orchestration
+        try:
+            cross_items = []
+            for a in agents:
+                recent = self.agent_memory_manager.get_recent(a.id, limit=2)
+                for mem in recent:
+                    cross_items.append(f"[{a.name}] {mem.content}")
+            if cross_items:
+                memory_context += "\n\n<recent_agent_learnings>\n" + "\n".join(cross_items[:10]) + "\n</recent_agent_learnings>"
+        except Exception:
+            pass
         system_prompt = SYSTEM_PROMPT.replace("{agent_list}", agent_list or "No agents configured yet.")
         system_prompt = system_prompt.replace("{memory_context}", memory_context or "No memory context available.")
 

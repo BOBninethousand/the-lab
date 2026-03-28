@@ -168,6 +168,11 @@ class AgentMemoryManager:
         entries.sort(key=lambda e: e.created_at, reverse=True)
         return entries
 
+    def get_recent(self, agent_id: str, limit: int = 3) -> List[AgentMemoryEntry]:
+        """Get most recent memories for an agent, sorted by created_at descending."""
+        entries = self.get_for_agent(agent_id)
+        return entries[:limit]
+
     async def search_for_agent(
         self, agent_id: str, query: str, top_k: int = 5
     ) -> List[AgentMemoryEntry]:

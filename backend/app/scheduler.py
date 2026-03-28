@@ -16,12 +16,61 @@ logger = logging.getLogger(__name__)
 DAY_MAP = {"mon": "1", "tue": "2", "wed": "3", "thu": "4", "fri": "5", "sat": "6", "sun": "0"}
 
 DEFAULT_JOBS = [
+    # --- Core Agent Jobs ---
+    {
+        "agent_name": "Scout",
+        "name": "Scout Morning Briefing",
+        "description": "Daily market trends, competitor moves, and growth opportunities",
+        "cron_expression": "0 9 * * 1-5",
+        "prompt": (
+            "Scan for the latest market trends, competitor moves, and growth opportunities "
+            "for HealthDataLab, Altituding, and IrisLab. Focus on health tech, wellness platforms, "
+            "and AI agent developments. Produce a concise briefing with the top 5 findings and "
+            "recommended actions."
+        ),
+    },
+    {
+        "agent_name": "Quill",
+        "name": "Quill Weekly Content Calendar",
+        "description": "Weekly content ideas for blog, social media, and email",
+        "cron_expression": "0 10 * * 1",
+        "prompt": (
+            "Review this week's content priorities for HealthDataLab. Draft 3 content ideas "
+            "(blog post, social media, email) based on recent market insights and HDL's positioning. "
+            "Include headlines, key angles, and target audience for each."
+        ),
+    },
+    {
+        "agent_name": "Forge",
+        "name": "Forge Daily Tech Report",
+        "description": "System health, job execution errors, and technical status",
+        "cron_expression": "0 17 * * 1-5",
+        "prompt": (
+            "Review The Lab's system health: check for any errors in recent job executions, "
+            "review agent performance metrics, and note any technical issues or improvements needed. "
+            "Produce a brief tech status report."
+        ),
+    },
+    {
+        "agent_name": "Radar",
+        "name": "Radar Daily Outreach",
+        "description": "Partnership and outreach opportunities for HealthDataLab",
+        "cron_expression": "0 11 * * 1-5",
+        "prompt": (
+            "Identify 3 potential partnership or outreach opportunities for HealthDataLab. "
+            "Focus on health practitioners, wellness platforms, corporate wellness programmes, "
+            "and IIPA members. For each opportunity, note: who they are, why they're relevant, "
+            "and a suggested approach."
+        ),
+    },
+    # --- HDL Agent Jobs ---
     {
         "agent_name": "Agent Bob",
         "name": "Agent Bob \u2014 Weekly HDL Assessment",
         "description": "Submit health + longevity assessment to healthdatalab.net",
         "cron_expression": "0 10 * * 1",
         "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+        "use_master_chat": True,
     },
     {
         "agent_name": "Agent Alice",
@@ -29,6 +78,7 @@ DEFAULT_JOBS = [
         "description": "Submit health + longevity assessment to healthdatalab.net",
         "cron_expression": "0 14 * * 1",
         "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+        "use_master_chat": True,
     },
     {
         "agent_name": "Agent Charlie",
@@ -36,6 +86,7 @@ DEFAULT_JOBS = [
         "description": "Submit health + longevity assessment to healthdatalab.net",
         "cron_expression": "0 11 * * 3",
         "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+        "use_master_chat": True,
     },
     {
         "agent_name": "Agent Diana",
@@ -43,6 +94,7 @@ DEFAULT_JOBS = [
         "description": "Submit health + longevity assessment to healthdatalab.net",
         "cron_expression": "0 15 * * 3",
         "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+        "use_master_chat": True,
     },
     {
         "agent_name": "Agent Echo",
@@ -50,6 +102,7 @@ DEFAULT_JOBS = [
         "description": "Submit health + longevity assessment to healthdatalab.net",
         "cron_expression": "0 10 * * 5",
         "prompt": "Submit my weekly health check and longevity assessment to healthdatalab.net",
+        "use_master_chat": True,
     },
     {
         "agent_name": "Dr Bob",
@@ -57,6 +110,7 @@ DEFAULT_JOBS = [
         "description": "Check credit balances for all 5 HDL test clients and produce a weekly status report",
         "cron_expression": "0 16 * * 5",
         "prompt": "Check the credit balance for all 5 HDL test clients and produce a weekly status report. Flag any agents that didn't submit this week.",
+        "use_master_chat": True,
     },
 ]
 
@@ -109,6 +163,9 @@ class SchedulerManager:
         self.report_manager = report_manager
         self.correction_manager = None  # Set from main.py after init
         self.notion_bridge = None  # Set from main.py after init
+        self.knowledge_manager = None  # Set from main.py after init
+        self.agent_memory_manager = None  # Set from main.py after init
+        self.master_chat = None  # Set from main.py after init
         self.scheduler = AsyncIOScheduler()
         self.jobs: dict = {}
         self.jobs_file = f"{settings.DATA_DIR}/scheduled_jobs.json"
@@ -515,7 +572,42 @@ class SchedulerManager:
         agent_id = agent.id
 
         try:
-            response = self.agent_manager.chat(agent_id, prompt)
+            # Fix 1: Build memory context for the agent before chat
+            memory_context = ""
+            try:
+                if self.knowledge_manager and self.agent_memory_manager and self.correction_manager:
+                    import asyncio as _aio
+                    from app.memory_engine import build_context
+                    _loop = _aio.get_event_loop()
+                    if _loop.is_running():
+                        future = _aio.run_coroutine_threadsafe(
+                            build_context(agent.id, prompt, self.knowledge_manager, self.agent_memory_manager, self.correction_manager),
+                            _loop,
+                        )
+                        memory_context = future.result(timeout=10)
+                    logger.info(f"Memory context built for job '{job_config['name']}' ({len(memory_context)} chars)")
+            except Exception as e:
+                logger.warning(f"Memory context build failed for job {job_id}: {e}")
+
+            enhanced_prompt = f"{memory_context}\n\n{prompt}" if memory_context else prompt
+
+            # Fix 3: Route HDL jobs through Master Chat for tool access
+            use_master_chat = job_config.get("use_master_chat", False)
+            if use_master_chat and self.master_chat:
+                import asyncio as _aio
+                _loop = _aio.get_event_loop()
+                if _loop.is_running():
+                    future = _aio.run_coroutine_threadsafe(
+                        self.master_chat.chat(enhanced_prompt),
+                        _loop,
+                    )
+                    response = future.result(timeout=120)
+                    if isinstance(response, dict):
+                        response = response.get("response", str(response))
+                else:
+                    response = self.agent_manager.chat(agent_id, enhanced_prompt)
+            else:
+                response = self.agent_manager.chat(agent_id, enhanced_prompt)
 
             # Check for error responses returned as strings
             if response.startswith("Error:") or response.startswith("Configuration Error:"):
@@ -562,6 +654,29 @@ class SchedulerManager:
 
             # Auto-publish to Notion
             self._publish_to_notion_sync(job_config["name"], response, agent.name)
+
+            # Fix 2: Extract learnings from the report into agent memory
+            try:
+                if self.agent_memory_manager:
+                    def _llm_for_extraction(extraction_prompt):
+                        llm = self.agent_manager.get_llm(agent.provider, agent.model_name)
+                        from langchain_core.messages import HumanMessage
+                        return llm.invoke([HumanMessage(content=extraction_prompt)]).content
+
+                    import asyncio as _aio
+                    _loop = _aio.get_event_loop()
+                    if _loop.is_running():
+                        _aio.run_coroutine_threadsafe(
+                            self.agent_memory_manager.extract_from_report(
+                                agent_id=agent.id, report_content=response,
+                                report_type="scheduled", agent_name=agent.name,
+                                llm_func=_llm_for_extraction,
+                            ),
+                            _loop,
+                        )
+                        logger.info(f"Learning extraction queued for job: {job_config['name']}")
+            except Exception as e:
+                logger.warning(f"Learning extraction failed for job {job_id}: {e}")
 
             self._broadcast_sync("job_completed", {
                 "job_id": job_id,

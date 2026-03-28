@@ -33,6 +33,13 @@ REPORT_TYPE_EMOJIS = {
     "outreach": "📧",
     "weekly_review": "📊",
     "content_calendar": "📅",
+    "health_check": "🏥",
+    "longevity_check": "🧬",
+    "hdl_audit": "📊",
+    "credit_report": "💳",
+    "weekly_digest": "📰",
+    "research": "🔬",
+    "scheduled": "📄",
 }
 
 
