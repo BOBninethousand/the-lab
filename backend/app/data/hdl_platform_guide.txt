@@ -1,0 +1,271 @@
+# HealthDataLab (HDL.net) — Complete Platform Guide for Testing Agents
+
+## Mission
+
+You are one of 6 synthetic testing agents for HealthDataLab (healthdatalab.net), a health tracking platform where clients fill health assessments and practitioners monitor their progress. Your job is to act as a REAL USER — fill forms with realistic data, check dashboards, verify reports arrive, and report back any issues, bugs, or UX problems you encounter. Think of yourself as a quality tester who uses the platform exactly like a normal human would.
+
+---
+
+## The Platform
+
+HealthDataLab connects **clients** (people tracking their health) with **practitioners** (health professionals monitoring them). Clients fill assessment forms, the platform calculates their biological age and health scores, generates PDF reports via Make.com, and tracks progress over time on a dashboard.
+
+### URLs
+- **Frontend (static site):** https://healthdatalab.com — marketing pages, pricing, sign-up
+- **Backend (WordPress):** https://healthdatalab.net — forms, dashboards, user accounts
+- **Longevity Form:** https://healthdatalab.net/longevity-form-rate-of-aging/
+- **Health Form:** https://healthdatalab.net/health-assessment/
+- **Client Dashboard:** https://healthdatalab.net/health-tracker/ (token-based access, no login needed)
+- **Practitioner Dashboard:** https://healthdatalab.net/health-tracker/ (login required, sees all linked clients)
+
+---
+
+## Your Team
+
+### Practitioner Agent
+| Field | Value |
+|-------|-------|
+| Name | Bob 9000 |
+| Email | 260128vm+practitioner@gmail.com |
+| WordPress ID | 117 |
+| Role | um_practitioner |
+| Credits | ~600 health, ~570 longevity (shared pool for all clients) |
+
+The practitioner agent monitors all 5 client agents. When a client submits a form, the practitioner receives an email notification and can view the data on their dashboard.
+
+### Client Agents
+| Agent | Email | WP ID | Age | Gender | Health Profile |
+|-------|-------|-------|-----|--------|---------------|
+| Agent Bob | 260128vm+bob@gmail.com | 166 | 35 | Male | Moderate fitness, back pain, insomnia. IMPROVING — focused on sleep and activity. |
+| Agent Alice | 260128vm+alice@gmail.com | 167 | 42 | Female | Good health, chronic work stress. STABLE — managing stress levels. |
+| Agent Charlie | 260128vm+charlie@gmail.com | 168 | 28 | Male | Very active, experimenting with diets. IMPROVING — optimizing diet and cognition. |
+| Agent Diana | 260128vm+diana@gmail.com | 169 | 55 | Female | Elevated BP, perimenopause, sleep issues. DECLINING — sleep getting worse. |
+| Agent Echo | 260128vm+echo@gmail.com | 170 | 38 | Male | Sedentary, overweight, pre-diabetic. RAPIDLY IMPROVING — new exercise habit. |
+
+All clients are linked to the practitioner. All emails arrive at the same inbox (260128vm@gmail.com via Gmail + aliasing).
+
+---
+
+## How the Platform Works — Client Side
+
+### Step 1: Getting Access
+Clients get accounts three ways:
+1. **Practitioner invite** — Practitioner sends an invite email with a magic link. Client clicks → account auto-created → taken to longevity form.
+2. **Consumer purchase** — Client buys a personal report on healthdatalab.com → Stripe checkout → account created → magic link emailed.
+3. **Free report** — Partner sites (e.g., Altituding) can provision free accounts with 1 longevity credit.
+
+For our testing: All 5 client agents already have approved accounts linked to the practitioner.
+
+### Step 2: Filling the Longevity Assessment
+
+The longevity form is a multi-step questionnaire at `/longevity-form-rate-of-aging/`. It has 6 sections with ~34 questions total. The form uses a card-based, one-question-at-a-time UX flow.
+
+**Section 1: Personal Information (6 questions)**
+- "What's your name?" (text)
+- "Do you have a preferred nickname?" (text, optional)
+- "What's your gender?" (cards: Male / Female / Other)
+- "How old are you?" (number, 18-120 years)
+- "What's your email address?" (email — results sent here)
+- "Your practitioner's email" (email, optional — links to practitioner)
+
+**Section 2: Health Vision (2 questions)**
+- "What are your main health challenges?" (textarea — describe current issues, symptoms, concerns)
+- "What changes are you hoping to see with your health?" (textarea — short-term and long-term goals)
+
+**Section 3: Body Measurements (8 questions)**
+- Height (cm slider), Weight (kg slider)
+- Blood Pressure Systolic/Diastolic (mmHg, optional)
+- Resting Heart Rate (bpm, optional)
+- Waist Circumference (cm, optional)
+- Hip Circumference (cm, optional)
+- "How would you rate your overall health?" (0-100% slider, optional)
+
+**Section 4: Daily Habits / Lifestyle Factors (12 questions, each 0-5 scale)**
+These are the core lifestyle scores that determine biological age:
+
+| Question | Score Key | Scale |
+|----------|-----------|-------|
+| "How active are you?" | physicalActivity | 0=Sedentary → 5=Very High |
+| "How many hours do you sleep?" | sleepDuration | 0=<4hrs → 5=8+hrs |
+| "How is your sleep quality?" | sleepQuality | 1-5 stars |
+| "How stressed do you feel?" | stressLevels | 0=Very Stressed → 5=Very Relaxed |
+| "How often do you connect with others?" | socialConnections | 0=Never → 5=Daily |
+| "How would you rate your diet?" | dietQuality | 0=Very Poor → 5=Excellent |
+| "How much water do you drink daily?" | dailyHydration | 0=<1L → 3=3L+ (NOTE: 0-3 scale) |
+| "Weekly alcohol consumption?" | alcoholConsumption | 0=15+ drinks → 5=None (INVERTED) |
+| "What is your smoking status?" | smokingStatus | 0=Daily → 5=Never (INVERTED) |
+| "How often do you challenge your brain?" | cognitiveActivity | 0=Never → 5=Daily |
+| "When do you get sunlight?" | sunlightExposure | 0=Rarely → 5=AM+PM |
+| "How often do you take supplements?" | supplementIntake | 0=Never → 5=Daily |
+
+**Section 5: Physical Performance (4 tests)**
+| Test | Score Key | Scale |
+|------|-----------|-------|
+| "30-Second Chair Sit-to-Stand Test" | sitStand | 0=0 reps → 5=25+ reps |
+| "Breath Hold Test (after exhaling)" | breathHold | 0=<15s → 5=90+s |
+| "Balance Test (one leg)" | balance | 0=<10s → 5=60+s |
+| "Skin Elasticity Test (pinch and release)" | skinElasticity | 0=30+s snapback → 5=1-2s |
+
+**Section 6: Final Details**
+- Date of Record (date picker)
+- Terms & Conditions (checkbox)
+
+### Step 3: Results Calculated
+
+After submitting, the system calculates:
+- **Biological Age** — based on all 16 lifestyle scores vs chronological age. Lower than real age = aging well.
+- **Age Shift** — difference between biological and chronological age. Negative = younger biologically.
+- **Aging Rate** — biological age / chronological age. Below 1.0 = aging slower than average.
+- **Lifestyle Score** — average of all 16 scores (0-5 scale).
+- **BMI** — weight(kg) / height(m)^2 with category (Underweight/Normal/Overweight/Obese).
+- **WHR** — waist/hip ratio with risk category (Low/Moderate/High Risk).
+- **Overall Health %** — lifestyle score as a percentage.
+
+### Step 4: PDF Report Generated
+
+After submission, the data is sent to Make.com which:
+1. Generates AI-written health recommendations based on the scores
+2. Creates charts (radar chart, aging rate gauge, body composition)
+3. Builds a branded PDF report
+4. Emails the PDF to the client's email address
+
+The PDF includes: biological age analysis, lifestyle score breakdown, strengths/improvements, personalized recommendations, body composition analysis, and action items.
+
+### Step 5: Dashboard Tracking
+
+Clients access their dashboard at `/health-tracker/` using email-based 2FA:
+1. Enter email → receive 6-digit code → enter code → access granted
+2. Dashboard shows all past submissions in a table with: date, form type, key metrics
+3. Timeline chart tracks biological age, health score, and BMI over time
+4. Can filter by form type (All / Longevity / Health)
+5. Can delete individual submissions (soft delete, 30-day recovery)
+
+---
+
+## How the Platform Works — Practitioner Side
+
+### Practitioner Dashboard
+
+When a practitioner logs in and visits `/health-tracker/`, they see a different view:
+
+**Client List:**
+- Table of all linked clients
+- Columns: Name, Status, Submission Count, Last Entry, Linked Since, Actions
+- Status badges:
+  - **Active** (green) — submitted within 90 days
+  - **Inactive** (yellow) — 90-180 days since last submission
+  - **Lapsed** (red) — 180+ days since last submission
+  - **Not Started** (gray) — no submissions yet
+
+**Click a client → View their full submission history:**
+- Same dashboard as the client sees
+- All form responses, metrics, and trend charts
+- Can send assessment reminders via email
+
+**Pending Invites:**
+- Shows invitations sent but not yet accepted
+- Can resend or cancel
+
+**Credit Balance:**
+- Health credits remaining (out of 1000 pool)
+- Longevity credits remaining
+- Visual progress bar (green/yellow/red based on remaining %)
+
+### What Practitioner Should Check
+- Can they see all 5 client agents in their list?
+- Do submission counts update after each agent submission?
+- Is the status correctly showing Active/Not Started?
+- Can they click into a client and see the full form data?
+- Do the timeline charts render correctly with multiple submissions?
+- Does the credit balance decrease correctly?
+
+---
+
+## The Health Assessment Form (Second Form)
+
+The health form at `/health-assessment/` is a separate, shorter assessment:
+
+**Sections:**
+- Personal Info (name, age, gender, email, practitioner email)
+- Body Composition (height, weight, waist measurement)
+- Fitness (exercise frequency, type, daily steps, fitness level)
+- Diet & Lifestyle (diet quality, water intake, alcohol, smoking)
+- Mental Wellbeing (stress level 1-10, sleep quality 1-10, energy level 1-10, social connections)
+- Medical Details (existing conditions, medications, family history)
+- Overall Health (self-rating 1-10, health goals)
+
+This form also deducts 1 health credit and triggers a Make.com webhook, but the report format is different from the longevity form.
+
+---
+
+## What to Test (Agent Testing Scenarios)
+
+### Every Submission (both forms)
+- [ ] Form data accepted without errors (API returns success: true)
+- [ ] Credit deducted (check balance before/after)
+- [ ] Data stored in health tracker (submission_id returned)
+- [ ] Make.com webhook triggered (make_status: "sent")
+- [ ] PDF report arrives at email within 1-5 minutes
+- [ ] Practitioner receives notification email
+- [ ] Data appears on practitioner dashboard
+
+### Periodic Checks
+- [ ] Dashboard shows correct submission count for each client
+- [ ] Timeline chart displays historical data points correctly
+- [ ] Client status badges update (Not Started → Active after first submission)
+- [ ] Credits don't go negative — auto-reset triggers when low
+- [ ] Rate limiting works (don't exceed 20 API calls/hour)
+- [ ] Form data is consistent with persona progression (improving agents should show better scores over time)
+
+### Error Scenarios to Watch For
+- Missing fields in API response
+- Make.com webhook failures (make_status: "failed")
+- Credit deduction failures
+- Health tracker storage failures
+- Email delivery failures (PDF not arriving)
+- Dashboard rendering issues (missing charts, broken layouts)
+- Practitioner can't see a client's data
+
+### What to Report Back
+
+After each submission, log:
+1. **Success/Failure** — did the submission complete?
+2. **Submission ID** — for tracking in the database
+3. **Credits** — before and after balance
+4. **Make.com Status** — was the PDF triggered?
+5. **Email Received** — did the PDF arrive? (check inbox)
+6. **Any Errors** — error messages, unexpected responses
+7. **UX Observations** — anything a real user would find confusing or broken
+
+---
+
+## API Reference (How Agents Submit)
+
+All submissions go through The Lab's REST API integration:
+
+```
+Base URL: https://healthdatalab.net/wp-json/hdl/v1/lab/
+Auth Header: X-HDL-Lab-Key: <key from .env>
+```
+
+| Action | Endpoint | Method |
+|--------|----------|--------|
+| Submit longevity form | /lab/submit-longevity | POST |
+| Submit health form | /lab/submit-health | POST |
+| Check user status | /lab/user-status | GET |
+| Top up credits | /lab/reset-credits | POST |
+
+See `hdl_tools.py` for Python wrapper functions.
+See `hdl_form_questions.json` for the complete question reference with answer options.
+See `hdl_personas/*.json` for each agent's health profile and progression rules.
+
+---
+
+## Important Constraints
+
+- **Rate limit:** 20 API calls/hour total across all agents
+- **Credit pool:** ~600 health / ~570 longevity — shared by all 5 clients from practitioner pool
+- **Make.com:** Each longevity submission generates a real PDF — max ~6/week to stay within free tier
+- **Email whitelist:** Only 260128vm+<name>@gmail.com emails accepted
+- **Stagger submissions:** Minimum 5-minute gap between submissions. Never submit 2 agents simultaneously.
+- **Practitioner notification:** Every submission sends an email to the practitioner — expect 2 emails per agent submission (1 health + 1 longevity)
