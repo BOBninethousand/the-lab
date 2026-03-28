@@ -284,11 +284,16 @@ class SchedulerManager:
             job_dict = dict(job_config)
             job_dict["human_schedule"] = cron_to_human(job_dict.get("cron_expression", ""))
             # Get last execution status
-            execs = self.get_executions(job_id, limit=1)
-            if execs:
-                job_dict["last_status"] = execs[0].status
-                job_dict["last_execution_id"] = execs[0].id
-            else:
+            try:
+                execs = self.get_executions(job_id, limit=1)
+                if execs:
+                    job_dict["last_status"] = execs[0].status
+                    job_dict["last_execution_id"] = execs[0].id
+                else:
+                    job_dict["last_status"] = None
+                    job_dict["last_execution_id"] = None
+            except Exception as e:
+                logger.warning(f"Failed to load executions for job {job_id}: {e}")
                 job_dict["last_status"] = None
                 job_dict["last_execution_id"] = None
             if self.scheduler.running:

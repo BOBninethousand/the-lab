@@ -9,6 +9,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 
 # Ensure INFO-level logging so Master Chat diagnostics are visible
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -790,7 +791,11 @@ async def publish_report_to_notion(report_id: str):
 # --- SCHEDULE ENDPOINTS ---
 @app.get("/api/schedule")
 async def list_schedule():
-    return scheduler_manager.list_jobs()
+    try:
+        return scheduler_manager.list_jobs()
+    except Exception as e:
+        logger.error(f"GET /api/schedule failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/schedule")
