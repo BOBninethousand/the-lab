@@ -1,0 +1,328 @@
+{
+  "longevity_form": {
+    "title": "Longevity & Health Report",
+    "description": "A comprehensive assessment that calculates your biological age, lifestyle score, and generates a personalized PDF report with AI-driven health recommendations.",
+    "sections": [
+      {
+        "step": 1,
+        "title": "Personal Information",
+        "subtitle": "Tell us about yourself",
+        "icon": "👤",
+        "questions": [
+          {"id": "fullName", "label": "What's your name?", "type": "text", "required": false},
+          {"id": "refNickname", "label": "Do you have a preferred nickname?", "type": "text", "required": false, "optional": true},
+          {"id": "gender", "label": "What's your gender?", "type": "cards", "options": [
+            {"value": "male", "label": "Male"},
+            {"value": "female", "label": "Female"},
+            {"value": "other", "label": "Other"}
+          ]},
+          {"id": "age", "label": "How old are you?", "type": "number", "unit": "years", "min": 18, "max": 120},
+          {"id": "email", "label": "What's your email address?", "type": "email", "helper": "We'll send your results here"},
+          {"id": "practitionerEmail", "label": "Your practitioner's email (optional)", "type": "email", "required": false, "optional": true}
+        ]
+      },
+      {
+        "step": 2,
+        "title": "Health Vision",
+        "subtitle": "What matters to you",
+        "icon": "🎯",
+        "questions": [
+          {"id": "healthChallenges", "label": "What are your main health challenges?", "type": "textarea", "placeholder": "e.g., low energy, weight management, stress...", "instructions": "Describe your current health issues, concerns, or areas you struggle with. Be specific about symptoms and how they affect your daily life."},
+          {"id": "healthGoals", "label": "What changes are you hoping to see with your health?", "type": "textarea", "placeholder": "Short term: More energy...\nLong term: Better overall health...", "instructions": "Describe both short-term goals (next 1-3 months) and long-term goals (6-12 months)."}
+        ]
+      },
+      {
+        "step": 3,
+        "title": "Your Body Story",
+        "subtitle": "Let's capture your physical metrics",
+        "icon": "📏",
+        "questions": [
+          {"id": "height", "label": "What is your height?", "type": "slider", "unit": "cm", "min": 50, "max": 300, "default": 170},
+          {"id": "weight", "label": "What is your weight?", "type": "slider", "unit": "kg", "min": 20, "max": 350, "default": 70},
+          {"id": "bpSystolic", "label": "Blood Pressure (Systolic)", "type": "number", "unit": "mmHg", "min": 70, "max": 250, "placeholder": "e.g., 120", "optional": true, "instructions": "The top number in your blood pressure reading. Normal is around 120."},
+          {"id": "bpDiastolic", "label": "Blood Pressure (Diastolic)", "type": "number", "unit": "mmHg", "min": 40, "max": 150, "placeholder": "e.g., 80", "optional": true, "instructions": "The bottom number in your blood pressure reading. Normal is around 80."},
+          {"id": "restingHeartRateBpm", "label": "Resting Heart Rate", "type": "number", "unit": "bpm", "min": 30, "max": 220, "placeholder": "e.g., 65", "optional": true, "instructions": "Your heart rate when sitting still. Normal range is 60-100 bpm."},
+          {"id": "waist", "label": "Waist Circumference", "type": "number", "unit": "cm", "min": 50, "max": 250, "placeholder": "e.g., 85", "optional": true},
+          {"id": "hip", "label": "Hip Circumference", "type": "number", "unit": "cm", "min": 60, "max": 200, "placeholder": "e.g., 95", "optional": true},
+          {"id": "overallHealthPercent", "label": "How would you rate your overall health?", "type": "percentage", "min": 0, "max": 100, "optional": true, "instructions": "A self-assessment from 0% (very poor) to 100% (excellent)."}
+        ]
+      },
+      {
+        "step": 4,
+        "title": "Daily Habits",
+        "subtitle": "Your lifestyle patterns",
+        "icon": "🌟",
+        "score_key_mapping": "These questions map to the 'scores' object in the form payload. Each answer's value (0-5) becomes the score.",
+        "questions": [
+          {
+            "id": "activity",
+            "score_key": "physicalActivity",
+            "label": "How active are you?",
+            "type": "cards",
+            "options": [
+              {"value": 0, "label": "Sedentary", "description": "Mostly sitting, minimal movement"},
+              {"value": 1, "label": "Very Low", "description": "Occasional short walks"},
+              {"value": 2, "label": "Low", "description": "Light activity a few times per week"},
+              {"value": 3, "label": "Moderate", "description": "Regular exercise 3-4 times per week"},
+              {"value": 4, "label": "High", "description": "Intense exercise 5+ times per week"},
+              {"value": 5, "label": "Very High", "description": "Athlete-level daily training"}
+            ]
+          },
+          {
+            "id": "sleepDuration",
+            "score_key": "sleepDuration",
+            "label": "How many hours do you sleep?",
+            "type": "cards",
+            "options": [
+              {"value": 0, "label": "<4 hours"},
+              {"value": 1, "label": "4-5 hours"},
+              {"value": 2, "label": "5-6 hours"},
+              {"value": 3, "label": "6-7 hours"},
+              {"value": 4, "label": "7-8 hours"},
+              {"value": 5, "label": "8+ hours"}
+            ]
+          },
+          {
+            "id": "sleepQuality",
+            "score_key": "sleepQuality",
+            "label": "How is your sleep quality?",
+            "type": "stars",
+            "max": 5,
+            "instructions": "Rate from 1 star (very poor, frequent waking) to 5 stars (deep, uninterrupted sleep)."
+          },
+          {
+            "id": "stressLevels",
+            "score_key": "stressLevels",
+            "label": "How stressed do you feel?",
+            "type": "emoji-slider",
+            "instructions": "0 = Very Stressed (overwhelmed, anxious), 5 = Very Relaxed (calm, at peace). NOTE: Higher score = LESS stress."
+          },
+          {
+            "id": "socialConnections",
+            "score_key": "socialConnections",
+            "label": "How often do you connect with others?",
+            "type": "cards",
+            "options": [
+              {"value": 0, "label": "Never", "description": "Isolated, no social contact"},
+              {"value": 1, "label": "Rarely", "description": "Once a month or less"},
+              {"value": 2, "label": "Sometimes", "description": "A few times a month"},
+              {"value": 3, "label": "Regularly", "description": "Weekly social activities"},
+              {"value": 4, "label": "Often", "description": "Several times per week"},
+              {"value": 5, "label": "Daily", "description": "Daily meaningful social interactions"}
+            ]
+          },
+          {
+            "id": "dietQuality",
+            "score_key": "dietQuality",
+            "label": "How would you rate your diet?",
+            "type": "cards",
+            "options": [
+              {"value": 0, "label": "Very Poor", "description": "Mostly fast food, processed meals"},
+              {"value": 1, "label": "Poor", "description": "Frequent takeout, few vegetables"},
+              {"value": 2, "label": "Below Average", "description": "Some healthy meals but inconsistent"},
+              {"value": 3, "label": "Average", "description": "Balanced most days"},
+              {"value": 4, "label": "Good", "description": "Mostly whole foods, regular vegetables"},
+              {"value": 5, "label": "Excellent", "description": "Clean diet, nutrient-dense, well-planned"}
+            ]
+          },
+          {
+            "id": "dailyHydration",
+            "score_key": "dailyHydration",
+            "label": "How much water do you drink daily?",
+            "type": "water-glasses",
+            "options": [
+              {"value": 0, "label": "<1L"},
+              {"value": 1, "label": "1-2L"},
+              {"value": 2, "label": "2-3L"},
+              {"value": 3, "label": "3L+"}
+            ],
+            "note": "Scale is 0-3 for this question, not 0-5."
+          },
+          {
+            "id": "alcoholConsumption",
+            "score_key": "alcoholConsumption",
+            "label": "Weekly alcohol consumption?",
+            "type": "cards",
+            "options": [
+              {"value": 0, "label": "15+ drinks", "description": "Heavy daily drinking"},
+              {"value": 1, "label": "10-14 drinks"},
+              {"value": 2, "label": "6-9 drinks"},
+              {"value": 3, "label": "3-5 drinks"},
+              {"value": 4, "label": "1-2 drinks"},
+              {"value": 5, "label": "None", "description": "No alcohol"}
+            ],
+            "note": "INVERTED scale: 0 = most alcohol, 5 = no alcohol."
+          },
+          {
+            "id": "smokingStatus",
+            "score_key": "smokingStatus",
+            "label": "What is your smoking status?",
+            "type": "cards",
+            "options": [
+              {"value": 0, "label": "Daily smoker"},
+              {"value": 1, "label": "Regular smoker"},
+              {"value": 2, "label": "Occasional smoker"},
+              {"value": 3, "label": "Recently Quit"},
+              {"value": 4, "label": "Former smoker"},
+              {"value": 5, "label": "Never smoked"}
+            ]
+          },
+          {
+            "id": "cognitiveActivity",
+            "score_key": "cognitiveActivity",
+            "label": "How often do you challenge your brain?",
+            "type": "cards",
+            "instructions": "Includes reading, puzzles, learning new skills, strategy games, creative work.",
+            "options": [
+              {"value": 0, "label": "Never"},
+              {"value": 1, "label": "Rarely"},
+              {"value": 2, "label": "Sometimes"},
+              {"value": 3, "label": "Regularly"},
+              {"value": 4, "label": "Often"},
+              {"value": 5, "label": "Daily"}
+            ]
+          },
+          {
+            "id": "sunlightExposure",
+            "score_key": "sunlightExposure",
+            "label": "When do you get sunlight?",
+            "type": "cards",
+            "instructions": "Morning and evening sun is optimal for circadian rhythm. Midday sun provides vitamin D but increases UV risk.",
+            "options": [
+              {"value": 0, "label": "Rarely", "description": "Mostly indoors"},
+              {"value": 1, "label": "Irregular"},
+              {"value": 2, "label": "Midday only"},
+              {"value": 3, "label": "Extended midday"},
+              {"value": 4, "label": "Morning/Evening", "description": "Optimal timing"},
+              {"value": 5, "label": "AM + PM", "description": "Both morning and evening exposure"}
+            ]
+          },
+          {
+            "id": "supplementIntake",
+            "score_key": "supplementIntake",
+            "label": "How often do you take supplements?",
+            "type": "cards",
+            "options": [
+              {"value": 0, "label": "Never"},
+              {"value": 1, "label": "Rarely"},
+              {"value": 2, "label": "Sometimes"},
+              {"value": 3, "label": "Regularly"},
+              {"value": 4, "label": "Often"},
+              {"value": 5, "label": "Daily"}
+            ]
+          }
+        ]
+      },
+      {
+        "step": 5,
+        "title": "Physical Performance",
+        "subtitle": "Quick fitness assessments",
+        "icon": "💪",
+        "questions": [
+          {
+            "id": "sitStand",
+            "score_key": "sitStand",
+            "label": "30-Second Chair Sit-to-Stand Test",
+            "type": "cards",
+            "instructions": "Using a standard chair (no armrests), sit with feet flat, arms crossed. Stand up fully and sit back down as many times as possible in 30 seconds. Count only complete stands.",
+            "options": [
+              {"value": 0, "label": "0 reps"},
+              {"value": 1, "label": "1-7 reps"},
+              {"value": 2, "label": "8-12 reps"},
+              {"value": 3, "label": "13-17 reps"},
+              {"value": 4, "label": "18-24 reps"},
+              {"value": 5, "label": "25+ reps"}
+            ]
+          },
+          {
+            "id": "breathHold",
+            "score_key": "breathHold",
+            "label": "Breath Hold Test",
+            "type": "cards",
+            "instructions": "How long can you hold your breath after exhaling? This tests CO2 tolerance and respiratory health.",
+            "options": [
+              {"value": 0, "label": "<15 seconds"},
+              {"value": 1, "label": "15-29 seconds"},
+              {"value": 2, "label": "30-45 seconds"},
+              {"value": 3, "label": "46-60 seconds"},
+              {"value": 4, "label": "61-90 seconds"},
+              {"value": 5, "label": "90+ seconds"}
+            ]
+          },
+          {
+            "id": "balance",
+            "score_key": "balance",
+            "label": "Balance Test (one leg)",
+            "type": "cards",
+            "instructions": "How long can you balance on one leg with eyes open? Stand on your dominant leg, other foot lifted. Time until you lose balance.",
+            "options": [
+              {"value": 0, "label": "<10 seconds"},
+              {"value": 1, "label": "10-19 seconds"},
+              {"value": 2, "label": "20-29 seconds"},
+              {"value": 3, "label": "30-39 seconds"},
+              {"value": 4, "label": "40-59 seconds"},
+              {"value": 5, "label": "60+ seconds"}
+            ]
+          },
+          {
+            "id": "skinElasticity",
+            "score_key": "skinElasticity",
+            "label": "Skin Elasticity Test",
+            "type": "cards",
+            "instructions": "Pinch the skin on the back of your hand for 5 seconds, then release. Time how long it takes to snap back flat. This measures collagen density and hydration.",
+            "options": [
+              {"value": 0, "label": "30+ seconds"},
+              {"value": 1, "label": "16-30 seconds"},
+              {"value": 2, "label": "10-15 seconds"},
+              {"value": 3, "label": "5-9 seconds"},
+              {"value": 4, "label": "3-4 seconds"},
+              {"value": 5, "label": "1-2 seconds"}
+            ]
+          }
+        ]
+      },
+      {
+        "step": 6,
+        "title": "Final Details",
+        "subtitle": "Almost there!",
+        "icon": "✅",
+        "questions": [
+          {"id": "entryDate", "label": "Date of Record", "type": "date"},
+          {"id": "termsAgree", "label": "Terms & Conditions", "type": "checkbox", "checkboxLabel": "I agree to the Terms & Conditions"}
+        ]
+      }
+    ],
+    "score_keys_summary": {
+      "description": "The 16 lifestyle scores (0-5 scale) that determine biological age. Higher = better health.",
+      "keys": [
+        "physicalActivity", "sleepDuration", "sleepQuality", "stressLevels",
+        "socialConnections", "dietQuality", "alcoholConsumption", "smokingStatus",
+        "cognitiveActivity", "sunlightExposure", "supplementIntake", "dailyHydration",
+        "sitStand", "breathHold", "balance", "skinElasticity"
+      ],
+      "additional_scores": ["bloodPressureScore", "heartRateScore"],
+      "notes": [
+        "stressLevels: 0=Very Stressed, 5=Very Relaxed (inverted from typical stress scales)",
+        "alcoholConsumption: 0=Heavy drinker, 5=No alcohol (inverted: less = better score)",
+        "smokingStatus: 0=Daily smoker, 5=Never smoked (inverted: never = best)",
+        "dailyHydration: Only 0-3 scale, not 0-5",
+        "bloodPressureScore and heartRateScore are computed from bpSystolic/bpDiastolic/restingHeartRateBpm"
+      ]
+    },
+    "computed_fields": {
+      "description": "These are calculated from the scores and body measurements, not answered directly.",
+      "fields": [
+        "biologicalAge — calculated from all 16 lifestyle scores vs chronological age",
+        "ageShift — difference between biological and chronological age (negative = younger)",
+        "agingRate — biologicalAge / chronologicalAge (< 1.0 = aging slower than average)",
+        "bmi — weight(kg) / height(m)^2",
+        "bmiCategory — Underweight/Normal/Overweight/Obese",
+        "whr — waist(cm) / hip(cm)",
+        "whrCategory — Low Risk/Moderate Risk/High Risk",
+        "lifestyle_score_value — average of all 16 lifestyle scores",
+        "overallHealthPercentage — lifestyle_score_value / 5 * 100"
+      ]
+    }
+  },
+  "agent_instructions": "When filling this form as a synthetic user: 1) Read each question carefully. 2) Consider your persona's health profile, age, lifestyle, and progression rules. 3) Answer as that person would — consistently with previous submissions but with natural variation. 4) For text questions (healthChallenges, healthGoals), write 1-3 sentences that reflect the persona's real concerns. 5) For scored questions, pick the option that best matches the persona's current state, applying progression trends from the persona config."
+}
