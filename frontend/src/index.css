@@ -114,6 +114,11 @@ body {
   animation: slide-up 0.25s ease-out;
 }
 
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
 /* Animations */
 @keyframes pulse-subtle {
   0%, 100% {
