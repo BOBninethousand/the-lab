@@ -1,32 +1,47 @@
-const gradients = {
-  scout: 'from-[#2d5a9e] to-[#1e3f6e]',
-  quill: 'from-[#9e5520] to-[#6e3b15]',
-  forge: 'from-[#5e3f9e] to-[#3e2a6e]',
-  radar: 'from-[#156e80] to-[#0e4f5e]',
-  default: 'from-[#4b5563] to-[#3a4250]',
+const AGENT_COLORS = {
+  Scout: '#3b6fcc',
+  Quill: '#c4682d',
+  Forge: '#7c5bbf',
+  Radar: '#1d8fa0',
+  'Dr Bob': '#2196F3',
+  'Agent Bob': '#4CAF50',
+  'Agent Alice': '#9C27B0',
+  'Agent Charlie': '#FF9800',
+  'Agent Diana': '#F44336',
+  'Agent Echo': '#00BCD4',
+}
+
+const DEFAULT_COLOR = '#6b7280'
+const SIZE_ALIASES = { sm: 20, md: 28, lg: 40 }
+
+function resolveColor(agent, name) {
+  const str = typeof agent === 'string' ? agent : typeof name === 'string' ? name : ''
+  if (AGENT_COLORS[str]) return AGENT_COLORS[str]
+  const lower = str.toLowerCase()
+  const match = Object.keys(AGENT_COLORS).find(k => lower.includes(k.toLowerCase()))
+  return match ? AGENT_COLORS[match] : DEFAULT_COLOR
 }
 
 export function AvatarCircle({ name, agent, size = 28 }) {
-  const initial = (name || agent || 'A').charAt(0).toUpperCase()
-
-  // Determine gradient based on agent name
-  let gradientKey = 'default'
-  if (agent) {
-    const lowerAgent = agent.toLowerCase()
-    if (lowerAgent.includes('scout')) gradientKey = 'scout'
-    else if (lowerAgent.includes('quill')) gradientKey = 'quill'
-    else if (lowerAgent.includes('forge')) gradientKey = 'forge'
-    else if (lowerAgent.includes('radar')) gradientKey = 'radar'
-  }
-
-  const gradient = gradients[gradientKey]
+  const px = typeof size === 'number' ? size : (SIZE_ALIASES[size] || 28)
+  const color = resolveColor(agent, name)
+  const eye = Math.max(2, px * 0.16)
+  const gap = Math.max(1, px * 0.15)
 
   return (
     <div
-      className={`flex-shrink-0 flex items-center justify-center rounded-full font-bold text-white bg-gradient-to-br ${gradient}`}
-      style={{ width: `${size}px`, height: `${size}px`, minWidth: `${size}px` }}
+      className="flex-shrink-0 flex items-center justify-center"
+      style={{
+        width: px, height: px, minWidth: px,
+        borderRadius: px * 0.25,
+        background: `linear-gradient(135deg, ${color}ee 0%, ${color} 100%)`,
+        boxShadow: `0 0 ${px * 0.25}px ${color}40`,
+      }}
     >
-      <span style={{ fontSize: `${size * 0.4}px` }}>{initial}</span>
+      <div style={{ display: 'flex', gap, marginTop: px * 0.07 }}>
+        <div style={{ width: eye, height: eye, borderRadius: '50%', background: 'rgba(255,255,255,0.95)' }} />
+        <div style={{ width: eye, height: eye, borderRadius: '50%', background: 'rgba(255,255,255,0.95)' }} />
+      </div>
     </div>
   )
 }
