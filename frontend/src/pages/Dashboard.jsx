@@ -4,11 +4,11 @@ import { StatCard } from '../components/StatCard'
 import { AgentRow } from '../components/AgentRow'
 import { ActivityList } from '../components/ActivityList'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { getAgents, getSchedule, getCrews, getTasks, getReports, getReportStats, getNotionStatus, getValueMetrics, getStrategies } from '../lib/api'
+import { getAgents, getSchedule, getReports, getReportStats, getNotionStatus, getValueMetrics, getStrategies, getCostToday, getCostSummary } from '../lib/api'
 import { formatDistanceToNow } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { Link, useNavigate } from 'react-router-dom'
-import { Clock, FileText, Zap, Bot, ExternalLink, Target, Brain, ShieldCheck } from 'lucide-react'
+import { Clock, FileText, Zap, Bot, ExternalLink, Target, Brain, ShieldCheck, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
 
 const AGENT_COLORS = {
   Scout: '#3b6fcc',
@@ -17,40 +17,9 @@ const AGENT_COLORS = {
   Radar: '#1d8fa0',
 }
 
-const AGENT_SCHEDULE = [
-  { agent: 'Forge', task: 'Tech Report', time: '07:00', days: 'Daily', type: 'tech_report' },
-  { agent: 'Scout', task: 'Weekly Opportunities', time: '07:00', days: 'Mon', type: 'briefing' },
-  { agent: 'Scout', task: 'Morning Briefing', time: '08:00', days: 'Daily', type: 'briefing' },
-  { agent: 'Quill', task: 'Daily Content', time: '09:00', days: 'Daily', type: 'content' },
-  { agent: 'Radar', task: 'Outreach Package', time: '10:00', days: 'Daily', type: 'outreach' },
-  { agent: 'Quill', task: 'Content Calendar', time: '20:00', days: 'Sun', type: 'content_calendar' },
-]
-
-function getNextRun(time, days) {
-  const now = new Date()
-  const [h, m] = time.split(':').map(Number)
-  const target = new Date(now)
-  target.setHours(h, m, 0, 0)
-
-  if (days === 'Daily') {
-    if (target <= now) target.setDate(target.getDate() + 1)
-  } else {
-    const dayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 }
-    const targetDay = dayMap[days]
-    if (targetDay !== undefined) {
-      const currentDay = now.getDay()
-      let daysUntil = (targetDay - currentDay + 7) % 7
-      if (daysUntil === 0 && target <= now) daysUntil = 7
-      target.setDate(target.getDate() + daysUntil)
-    } else if (target <= now) {
-      target.setDate(target.getDate() + 1)
-    }
-  }
-  return target
-}
-
-function formatCountdown(target) {
-  const diff = Math.max(0, target - new Date())
+function formatCountdown(isoTimestamp) {
+  if (!isoTimestamp) return null
+  const diff = Math.max(0, new Date(isoTimestamp) - new Date())
   const hours = Math.floor(diff / (1000 * 60 * 60))
   const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
   if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`
@@ -61,8 +30,6 @@ function formatCountdown(target) {
 export function Dashboard() {
   const [agents, setAgents] = useState([])
   const [schedule, setSchedule] = useState([])
-  const [crews, setCrews] = useState([])
-  const [tasks, setTasks] = useState([])
   const [latestReports, setLatestReports] = useState([])
   const [reportStats, setReportStats] = useState(null)
   const [activity, setActivity] = useState([])
@@ -70,33 +37,35 @@ export function Dashboard() {
   const [notionStatus, setNotionStatus] = useState(null)
   const [valueMetrics, setValueMetrics] = useState(null)
   const [strategies, setStrategies] = useState([])
+  const [costToday, setCostToday] = useState(null)
+  const [costSummary, setCostSummary] = useState(null)
   const { events, isConnected } = useWebSocket()
   const navigate = useNavigate()
 
   const loadData = async () => {
     setIsLoading(true)
     try {
-      const [agentsData, scheduleData, crewsData, tasksData, reportsData, rStatsData, nStatus, vMetrics, stratData] = await Promise.all([
+      const [agentsData, scheduleData, reportsData, rStatsData, nStatus, vMetrics, stratData, cToday, cSummary] = await Promise.all([
         getAgents().catch(() => []),
         getSchedule().catch(() => []),
-        getCrews().catch(() => []),
-        getTasks().catch(() => []),
         getReports({ limit: 4 }).catch(() => []),
         getReportStats().catch(() => null),
         getNotionStatus().catch(() => null),
         getValueMetrics().catch(() => null),
         getStrategies().catch(() => []),
+        getCostToday().catch(() => null),
+        getCostSummary(7).catch(() => null),
       ])
 
       setAgents(Array.isArray(agentsData) ? agentsData : (agentsData.agents || []))
       setSchedule(Array.isArray(scheduleData) ? scheduleData : (scheduleData.schedule || []))
-      setCrews(Array.isArray(crewsData) ? crewsData : (crewsData.crews || []))
-      setTasks(Array.isArray(tasksData) ? tasksData : (tasksData.tasks || []))
       setLatestReports(Array.isArray(reportsData) ? reportsData : [])
       if (rStatsData) setReportStats(rStatsData)
       if (nStatus) setNotionStatus(nStatus)
       if (vMetrics) setValueMetrics(vMetrics)
       setStrategies(Array.isArray(stratData) ? stratData : [])
+      if (cToday) setCostToday(cToday)
+      if (cSummary) setCostSummary(cSummary)
     } catch (err) {
       console.error('Failed to load dashboard data:', err)
     } finally {
@@ -128,22 +97,128 @@ export function Dashboard() {
     } else if (e.type === 'report_updated') {
       getReports({ limit: 4 }).catch(() => []).then(d => setLatestReports(Array.isArray(d) ? d : []))
     }
-    // skill_completed, knowledge_changed, correction_added, task_completed — activity feed only, no data reload needed
   }, [events])
 
-  const onlineAgents = agents.length
+  const workingAgents = agents.filter(a => a.status === 'working').length
+  const enabledJobs = schedule.filter(j => j.enabled !== false)
+  const nextJob = enabledJobs
+    .filter(j => j.next_run)
+    .sort((a, b) => new Date(a.next_run) - new Date(b.next_run))[0]
 
   const TYPE_LABELS = { briefing: 'Briefing', content: 'Content', tech_report: 'Tech Report', outreach: 'Outreach', weekly_review: 'Weekly Review', content_calendar: 'Calendar' }
+
+  // 7-day chart data
+  const chartDays = (() => {
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      days.push(d.toISOString().slice(0, 10))
+    }
+    const spendMap = {}
+    if (costSummary?.daily_spend) {
+      costSummary.daily_spend.forEach(d => { spendMap[d.date] = d.cost_usd })
+    }
+    return days.map(date => ({
+      label: new Date(date + 'T00:00').toLocaleDateString('en', { weekday: 'short' }),
+      value: spendMap[date] || 0,
+    }))
+  })()
+  const chartMax = Math.max(...chartDays.map(d => d.value), 0.01)
+
+  const budgetPct = costToday && costToday.budget_usd > 0
+    ? Math.min(100, (costToday.spend_usd / costToday.budget_usd) * 100)
+    : 0
 
   return (
     <div className="space-y-8">
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Agents Online" value={`${onlineAgents}/${onlineAgents}`} isLoading={isLoading} />
-        <StatCard label="Total Reports" value={reportStats?.total ?? 0} isLoading={isLoading} />
+        <StatCard
+          label="Agents"
+          value={workingAgents > 0 ? `${workingAgents} working` : `${agents.length} idle`}
+          isLoading={isLoading}
+        />
         <StatCard label="Reports Today" value={reportStats?.today ?? 0} isLoading={isLoading} />
+        <div className="card">
+          <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-3">
+            Today's Spend
+          </div>
+          {isLoading ? (
+            <div className="h-7 bg-lab-elevated rounded animate-pulse" />
+          ) : (
+            <>
+              <div className="text-stat">
+                ${costToday ? costToday.spend_usd.toFixed(2) : '0.00'}
+              </div>
+              {costToday && costToday.budget_usd > 0 && (
+                <div className="mt-2">
+                  <div className="w-full h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        budgetPct > 90 ? 'bg-lab-error' : budgetPct > 70 ? 'bg-lab-warning' : 'bg-lab-success'
+                      }`}
+                      style={{ width: `${budgetPct}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-lab-text-faint mt-1">
+                    of ${costToday.budget_usd.toFixed(2)} budget
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
         <StatCard label="Unread" value={reportStats?.unread ?? 0} isLoading={isLoading} />
       </div>
+
+      {/* Next Up */}
+      {nextJob && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-lab-accent/20 bg-lab-accent/[0.03]">
+          <AvatarCircle name={nextJob.agent_name} agent={nextJob.agent_name} size={24} />
+          <div className="flex-1 min-w-0">
+            <span className="text-xs text-lab-text-muted">Next up</span>
+            <div className="text-sm font-medium text-lab-text-primary truncate">{nextJob.name}</div>
+          </div>
+          <div className="text-sm font-semibold text-lab-accent">
+            in {formatCountdown(nextJob.next_run)}
+          </div>
+        </div>
+      )}
+
+      {/* 7-Day Activity */}
+      {costSummary && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-section-label">7-Day Spend</h2>
+            <Link to="/costs" className="text-xs text-lab-text-muted hover:text-lab-text-secondary transition-subtle">
+              View details
+            </Link>
+          </div>
+          <div className="card p-4">
+            <div className="flex items-end gap-1.5 h-16">
+              {chartDays.map((day, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div className="w-full flex items-end justify-center" style={{ height: '48px' }}>
+                    <div
+                      className="w-full max-w-[28px] rounded-sm bg-lab-accent/60 hover:bg-lab-accent transition-subtle"
+                      style={{ height: `${Math.max(2, (day.value / chartMax) * 48)}px` }}
+                      title={`$${day.value.toFixed(2)}`}
+                    />
+                  </div>
+                  <span className="text-[9px] text-lab-text-faint">{day.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-lab-border">
+              <span className="text-[10px] text-lab-text-muted">7-day total</span>
+              <span className="text-xs font-semibold text-lab-text-primary">
+                ${costSummary.total_cost_usd?.toFixed(2) ?? '0.00'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notion Activity */}
       {notionStatus && (
@@ -237,31 +312,31 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Value Metrics */}
+      {/* System Overview */}
       {valueMetrics && (
         <div>
           <div className="mb-4">
-            <h2 className="text-section-label">Agent Value</h2>
+            <h2 className="text-section-label">System Overview</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="card p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <FileText size={12} className="text-lab-text-muted" />
-                <span className="text-[10px] text-lab-text-muted">Reports</span>
+                <span className="text-[10px] text-lab-text-muted">Total Reports</span>
               </div>
               <div className="text-lg font-semibold text-lab-text-primary">{valueMetrics.total_reports}</div>
             </div>
             <div className="card p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Brain size={12} className="text-lab-text-muted" />
-                <span className="text-[10px] text-lab-text-muted">Memories</span>
+                <span className="text-[10px] text-lab-text-muted">Knowledge</span>
               </div>
-              <div className="text-lg font-semibold text-lab-text-primary">{valueMetrics.agent_memories}</div>
+              <div className="text-lg font-semibold text-lab-text-primary">{valueMetrics.knowledge_entries + valueMetrics.agent_memories}</div>
             </div>
             <div className="card p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <ShieldCheck size={12} className="text-lab-text-muted" />
-                <span className="text-[10px] text-lab-text-muted">Auto Rules</span>
+                <span className="text-[10px] text-lab-text-muted">Guardrails</span>
               </div>
               <div className="text-lg font-semibold text-emerald-400">{valueMetrics.auto_rules}</div>
             </div>
@@ -275,7 +350,7 @@ export function Dashboard() {
             <div className="card p-3">
               <div className="flex items-center gap-1.5 mb-1">
                 <Zap size={12} className="text-lab-text-muted" />
-                <span className="text-[10px] text-lab-text-muted">30d Cost</span>
+                <span className="text-[10px] text-lab-text-muted">30d Spend</span>
               </div>
               <div className="text-lg font-semibold text-lab-text-primary">${typeof valueMetrics.total_cost_30d === 'number' ? valueMetrics.total_cost_30d.toFixed(2) : '0.00'}</div>
             </div>
@@ -363,33 +438,66 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* Agent Schedule */}
+          {/* Agent Schedule — real data from API */}
           <div>
-            <div className="mb-4">
+            <div className="flex items-center justify-between mb-4">
               <h2 className="text-section-label">Agent Schedule</h2>
+              <Link
+                to="/calendar"
+                className="text-xs text-lab-text-muted hover:text-lab-text-secondary transition-subtle"
+              >
+                Manage
+              </Link>
             </div>
-            <div className="card p-0 overflow-hidden">
-              <div className="divide-y divide-lab-border">
-                {AGENT_SCHEDULE.map((job, idx) => {
-                  const nextRun = getNextRun(job.time, job.days)
-                  const countdown = formatCountdown(nextRun)
-                  return (
-                    <div key={idx} className="flex items-center gap-3 px-4 py-2.5">
-                      <AvatarCircle name={job.agent} agent={job.agent} size={22} />
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs text-lab-text-primary">{job.task}</span>
-                      </div>
-                      <span className="text-[10px] text-lab-text-muted px-2 py-0.5 bg-lab-elevated rounded">
-                        {job.days} {job.time}
-                      </span>
-                      <span className="text-[10px] text-lab-text-secondary font-medium w-14 text-right">
-                        in {countdown}
-                      </span>
-                    </div>
-                  )
-                })}
+            {isLoading ? (
+              <div className="card p-0 overflow-hidden">
+                <div className="space-y-0">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="h-11 border-b border-lab-border animate-pulse bg-lab-surface" />
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : enabledJobs.length === 0 ? (
+              <div className="card"><EmptyState icon={Clock} title="No scheduled jobs" description="Create jobs in the Calendar tab" /></div>
+            ) : (
+              <div className="card p-0 overflow-hidden">
+                <div className="divide-y divide-lab-border">
+                  {enabledJobs.slice(0, 8).map(job => {
+                    const countdown = formatCountdown(job.next_run)
+                    return (
+                      <div key={job.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <AvatarCircle name={job.agent_name} agent={job.agent_name} size={22} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs text-lab-text-primary">{job.name}</span>
+                        </div>
+                        {job.last_status === 'success' ? (
+                          <CheckCircle2 size={12} className="text-emerald-400 flex-shrink-0" />
+                        ) : job.last_status === 'failed' ? (
+                          <XCircle size={12} className="text-lab-error flex-shrink-0" />
+                        ) : (
+                          <AlertCircle size={12} className="text-lab-text-faint flex-shrink-0" />
+                        )}
+                        <span className="text-[10px] text-lab-text-muted px-2 py-0.5 bg-lab-elevated rounded flex-shrink-0">
+                          {job.human_schedule || job.cron_expression}
+                        </span>
+                        {countdown && (
+                          <span className="text-[10px] text-lab-text-secondary font-medium w-14 text-right flex-shrink-0">
+                            in {countdown}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {enabledJobs.length > 8 && (
+                  <div className="px-4 py-2 border-t border-lab-border">
+                    <Link to="/calendar" className="text-[10px] text-lab-text-muted hover:text-lab-text-secondary transition-subtle">
+                      +{enabledJobs.length - 8} more jobs
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
