@@ -1437,10 +1437,10 @@ async def claw3d_office_api_proxy(request: Request, path: str):
 @app.post("/api/master-chat")
 async def master_chat_endpoint(data: MasterChatRequest):
     try:
-        response = await asyncio.wait_for(master_chat.chat(data.message), timeout=90.0)
-        return {"response": response}
+        result = await asyncio.wait_for(master_chat.chat(data.message), timeout=90.0)
+        return result
     except asyncio.TimeoutError:
-        return {"response": "That request took too long (>90s). Try a simpler prompt, or break it into smaller steps."}
+        return {"response": "That request took too long (>90s). Try a simpler prompt, or break it into smaller steps.", "tools_used": []}
 
 
 @app.get("/api/master-chat/history")
@@ -1521,7 +1521,7 @@ async def chat_in_conversation(convo_id: str, data: MasterChatRequest):
         )
         return result
     except asyncio.TimeoutError:
-        return {"convo_id": convo_id, "response": "That request took too long (>90s). Try a simpler prompt."}
+        return {"convo_id": convo_id, "response": "That request took too long (>90s). Try a simpler prompt.", "tools_used": []}
 
 
 # --- SKILLS ENDPOINTS ---

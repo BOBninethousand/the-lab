@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { FlaskConical, Send, X, Trash2, Loader2, Copy, Check } from 'lucide-react'
+import { FlaskConical, Send, X, Trash2, Loader2, Copy, Check, Wrench } from 'lucide-react'
 import { sendMasterChat, getMasterChatHistory, clearMasterChatHistory } from '../lib/api'
 import { parseUTC } from '../lib/time'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
 
 export function MasterChat() {
   const location = useLocation()
@@ -53,7 +56,12 @@ export function MasterChat() {
 
     try {
       const data = await sendMasterChat(msg)
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response, timestamp: new Date().toISOString() }])
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.response,
+        timestamp: new Date().toISOString(),
+        tools_used: data.tools_used || [],
+      }])
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message || 'Failed to reach Master Chat'}`, timestamp: new Date().toISOString() }])
     } finally {
@@ -151,7 +159,26 @@ export function MasterChat() {
                       : 'bg-lab-elevated text-lab-text-secondary border border-lab-border'
                   }`}
                 >
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  {/* Tool call pills */}
+                  {msg.tools_used && msg.tools_used.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2 pb-2 border-b border-white/[0.04]">
+                      {msg.tools_used.map((t, j) => (
+                        <span key={j} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-lab-accent/10 text-[9px] text-lab-accent">
+                          <Wrench size={8} />
+                          {t.summary}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {msg.role === 'assistant' ? (
+                    <div className="prose-chat text-xs">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  )}
                   <div className="flex items-center justify-between mt-1">
                     {msg.timestamp && (
                       <div className="text-[9px] text-lab-text-faint">

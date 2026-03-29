@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { FlaskConical, Send, Loader2, Copy, Check, Plus, Trash2, Pencil, MessageSquare, Sparkles, Bot, CalendarDays, BookOpen, X } from 'lucide-react'
+import { FlaskConical, Send, Loader2, Copy, Check, Plus, Trash2, Pencil, MessageSquare, Sparkles, Bot, CalendarDays, BookOpen, X, Wrench } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { listConversations, createConversation, getConversation, deleteConversation, renameConversation, chatInConversation } from '../lib/api'
 import { parseUTC } from '../lib/time'
@@ -123,7 +123,7 @@ export function MasterChatPage() {
 
     try {
       const data = await chatInConversation(convoId, msg)
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response, timestamp: new Date().toISOString() }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.response, timestamp: new Date().toISOString(), tools_used: data.tools_used || [] }])
       // Update sidebar title if first message
       setConversations(prev => prev.map(c =>
         c.id === convoId
@@ -309,6 +309,17 @@ export function MasterChatPage() {
                       : 'bg-lab-elevated text-lab-text-secondary border border-lab-border px-5 py-4 max-w-[85%]'
                   }`}
                 >
+                  {/* Tool call pills */}
+                  {msg.tools_used && msg.tools_used.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-white/[0.04]">
+                      {msg.tools_used.map((t, j) => (
+                        <span key={j} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-lab-accent/10 text-[10px] text-lab-accent font-medium">
+                          <Wrench size={10} />
+                          {t.summary}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {msg.role === 'assistant' ? (
                     <div className="prose-chat">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>

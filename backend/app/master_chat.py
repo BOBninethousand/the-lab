@@ -24,6 +24,64 @@ DATA_DIR = settings.DATA_DIR
 CHAT_FILE = os.path.join(DATA_DIR, "master_chat_history.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "master_chat_config.json")
 
+# Shared keyword list for action detection (DRY — used in both chat methods)
+ACTION_KEYWORDS = [
+    "create", "make", "add", "set up", "schedule", "delete", "remove",
+    "run", "execute", "deploy", "publish", "correct", "rate",
+    "update", "toggle", "pause", "resume",
+    "list agents", "list schedule", "list strat", "list report", "list skill",
+    "how much", "spending", "cost", "star", "unstar",
+    "skill", "briefing", "audit", "onboard",
+    "collaborate", "together", "strategy",
+    "health", "longevity", "hdl", "credits", "diagnostics", "persona",
+]
+
+
+def _tool_summary(fn_name: str, fn_args: dict) -> str:
+    """Human-readable one-liner for a tool call."""
+    action = fn_args.get("action", "")
+    name = fn_args.get("name", fn_args.get("agent_name", fn_args.get("job_name", "")))
+    if fn_name == "chat_with_agent":
+        return f"Routed to {fn_args.get('agent_name', 'agent')}"
+    if fn_name == "collaborate":
+        agents = fn_args.get("agent_names", [])
+        return f"Collaboration: {', '.join(agents)}" if agents else "Multi-agent collaboration"
+    if fn_name == "manage_agents":
+        return f"{action.title()}d agent {name}" if action == "create" else f"{action.title()} agents"
+    if fn_name == "manage_schedules":
+        return f"{action.title()}d schedule {name}" if name else f"{action.title()} schedules"
+    if fn_name == "run_job_now":
+        return f"Ran {fn_args.get('job_name', 'job')}"
+    if fn_name == "manage_reports":
+        return f"{action.title()} report" if action else "Managed reports"
+    if fn_name == "manage_knowledge":
+        return f"{action.title()} knowledge" if action else "Managed knowledge"
+    if fn_name == "manage_strategies":
+        return f"{action.title()}d strategy {name}" if name else f"{action.title()} strategies"
+    if fn_name == "execute_strategy":
+        return "Executed strategy"
+    if fn_name == "search_knowledge":
+        return "Searched knowledge"
+    if fn_name == "execute_skill":
+        return f"Ran skill: {fn_args.get('skill_name', 'unknown')}"
+    if fn_name == "manage_skills":
+        return f"{action.title()} skills"
+    if fn_name == "publish_to_notion":
+        return "Published to Notion"
+    if fn_name == "manage_notion_tasks":
+        return f"{action.replace('_', ' ').title()} Notion tasks"
+    if fn_name == "get_lab_status":
+        return "Checked lab status"
+    if fn_name == "get_cost_summary":
+        return "Checked costs"
+    if fn_name == "add_correction":
+        return f"Added correction for {fn_args.get('agent_name', 'agent')}"
+    if fn_name == "rate_execution":
+        return f"Rated execution {fn_args.get('rating', '?')}/5"
+    if fn_name.startswith("submit_") or fn_name.startswith("check_hdl") or fn_name.startswith("reset_hdl") or fn_name.startswith("run_hdl"):
+        return fn_name.replace("_", " ").title()
+    return fn_name.replace("_", " ").title()
+
 SYSTEM_PROMPT = """You are The Lab's Master Chat — the AI command centre that orchestrates everything.
 
 ## Your Role
@@ -1559,17 +1617,8 @@ class MasterChat:
                 client = OpenAI(api_key="ollama", base_url=settings.OLLAMA_BASE_URL + "/v1", timeout=90.0)
 
             # Detect action-oriented messages and force tool usage
-            action_keywords = [
-                "create", "make", "add", "set up", "schedule", "delete", "remove",
-                "run", "execute", "list", "show", "check", "find", "search",
-                "publish", "correct", "rate", "update", "toggle", "pause", "resume",
-                "status", "how much", "spending", "cost", "star", "unstar",
-                "skill", "deploy", "briefing", "audit", "onboard",
-                "collaborate", "together", "strategy",
-                "health", "longevity", "hdl", "credits", "diagnostics", "persona",
-            ]
             msg_lower = user_message.lower()
-            is_action = any(kw in msg_lower for kw in action_keywords)
+            is_action = any(kw in msg_lower for kw in ACTION_KEYWORDS)
             tool_mode = "required" if is_action else "auto"
             logger.info(f"Master Chat: tool_choice={tool_mode} (action_detected={is_action})")
 
@@ -1581,11 +1630,11 @@ class MasterChat:
             )
 
             assistant_msg = response.choices[0].message
+            tools_used = []
 
             # Handle tool calls
             if assistant_msg.tool_calls:
                 logger.info(f"Master Chat: GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
-                # Execute each tool
                 tool_results = []
                 for tool_call in assistant_msg.tool_calls:
                     fn_name = tool_call.function.name
@@ -1598,6 +1647,7 @@ class MasterChat:
                         "role": "tool",
                         "content": result,
                     })
+                    tools_used.append({"tool": fn_name, "summary": _tool_summary(fn_name, fn_args)})
 
                 # Send tool results back for final response
                 messages.append(assistant_msg.model_dump())
@@ -1635,12 +1685,12 @@ class MasterChat:
             # Save assistant response
             self._save_message("assistant", final_text)
 
-            return final_text
+            return {"response": final_text, "tools_used": tools_used}
 
         except Exception as e:
             error_msg = f"Master Chat error: {str(e)}"
             self._save_message("assistant", error_msg)
-            return error_msg
+            return {"response": error_msg, "tools_used": []}
 
     async def chat_in_conversation(self, convo_id: str, user_message: str) -> dict:
         """Process a message within a specific conversation. Returns {convo_id, response}."""
@@ -1702,17 +1752,8 @@ class MasterChat:
             else:
                 client = OpenAI(api_key="ollama", base_url=settings.OLLAMA_BASE_URL + "/v1", timeout=90.0)
 
-            action_keywords = [
-                "create", "make", "add", "set up", "schedule", "delete", "remove",
-                "run", "execute", "list", "show", "check", "find", "search",
-                "publish", "correct", "rate", "update", "toggle", "pause", "resume",
-                "status", "how much", "spending", "cost", "star", "unstar",
-                "skill", "deploy", "briefing", "audit", "onboard",
-                "collaborate", "together", "strategy",
-                "health", "longevity", "hdl", "credits", "diagnostics", "persona",
-            ]
             msg_lower = user_message.lower()
-            is_action = any(kw in msg_lower for kw in action_keywords)
+            is_action = any(kw in msg_lower for kw in ACTION_KEYWORDS)
             tool_mode = "required" if is_action else "auto"
 
             response = client.chat.completions.create(
@@ -1723,6 +1764,7 @@ class MasterChat:
             )
 
             assistant_msg = response.choices[0].message
+            tools_used = []
 
             if assistant_msg.tool_calls:
                 logger.info(f"Master Chat: GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
@@ -1738,6 +1780,7 @@ class MasterChat:
                         "role": "tool",
                         "content": result,
                     })
+                    tools_used.append({"tool": fn_name, "summary": _tool_summary(fn_name, fn_args)})
 
                 messages.append(assistant_msg.model_dump())
                 messages.extend(tool_results)
@@ -1771,9 +1814,9 @@ class MasterChat:
                     )
 
             self._save_message_to_convo(convo_id, "assistant", final_text)
-            return {"convo_id": convo_id, "response": final_text}
+            return {"convo_id": convo_id, "response": final_text, "tools_used": tools_used}
 
         except Exception as e:
             error_msg = f"Master Chat error: {str(e)}"
             self._save_message_to_convo(convo_id, "assistant", error_msg)
-            return {"convo_id": convo_id, "response": error_msg}
+            return {"convo_id": convo_id, "response": error_msg, "tools_used": []}
