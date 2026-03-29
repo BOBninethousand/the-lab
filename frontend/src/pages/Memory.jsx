@@ -9,6 +9,7 @@ import {
 } from '../lib/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { formatDate } from '../lib/time'
+import { EmptyState } from '../components/EmptyState'
 
 const CATEGORIES = [
   { value: null, label: 'All' },
@@ -431,7 +432,7 @@ export function Memory() {
           {isLoading ? (
             <LoadingSkeleton />
           ) : knowledge.length === 0 ? (
-            <EmptyState message={knowledgeSearch ? 'No results found' : 'No knowledge entries yet. Add facts, rules, and references that agents should know.'} />
+            <EmptyState icon={BookOpen} title={knowledgeSearch ? 'No results found' : 'No knowledge entries'} description={knowledgeSearch ? 'Try a different search term' : 'Add facts, rules, and references that agents should know'} action={!knowledgeSearch ? { label: 'Add Knowledge', onClick: () => { setForm({ title: '', content: '', tags: '', category: 'fact' }); setShowAddKnowledge(true) } } : undefined} />
           ) : (
             <div className="space-y-2">
               {knowledge.map(entry => (
@@ -512,7 +513,7 @@ export function Memory() {
           {isLoading ? (
             <LoadingSkeleton />
           ) : agentMemories.length === 0 ? (
-            <EmptyState message={memorySearch ? 'No matching memories' : `No memories yet. Start chatting with ${getAgentName(selectedAgent)} and memories will be captured automatically.`} />
+            <EmptyState icon={Brain} title={memorySearch ? 'No matching memories' : 'No memories yet'} description={memorySearch ? 'Try a different search term' : `Start chatting with ${getAgentName(selectedAgent)} and memories will be captured automatically`} />
           ) : (
             <div className="space-y-2">
               {agentMemories.map(mem => {
@@ -606,7 +607,7 @@ export function Memory() {
                   <AlertTriangle size={12} /> Logged Corrections ({corrections.filter(c => c.occurrence_count < 2).length})
                 </h3>
                 {corrections.filter(c => c.occurrence_count < 2).length === 0 ? (
-                  <EmptyState message={`No corrections logged for ${getAgentName(correctionAgent)} yet.`} />
+                  <EmptyState icon={ShieldCheck} title="No corrections logged" description={`No corrections logged for ${getAgentName(correctionAgent)} yet`} />
                 ) : (
                   corrections.filter(c => c.occurrence_count < 2).map(corr => (
                     <div key={corr.id} className="p-4 border border-lab-border rounded-lg">
@@ -852,13 +853,6 @@ function LoadingSkeleton() {
   )
 }
 
-function EmptyState({ message }) {
-  return (
-    <div className="text-center py-8">
-      <p className="text-sm text-lab-text-faint">{message}</p>
-    </div>
-  )
-}
 
 function Modal({ title, children, onClose }) {
   return (

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Plus, ChevronRight } from 'lucide-react'
+import { Plus, ChevronRight, Users, Bot } from 'lucide-react'
+import { EmptyState } from '../components/EmptyState'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { AgentRow } from '../components/AgentRow'
 import { getCrews, getAgents, createCrew } from '../lib/api'
@@ -85,15 +86,7 @@ export function Teams() {
             ))}
           </div>
         ) : activeCrew.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-sm text-lab-text-faint mb-4">No active crews</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="text-xs text-lab-accent hover:text-lab-accent/80 transition-subtle"
-            >
-              Create your first crew
-            </button>
-          </div>
+          <EmptyState icon={Users} title="No active crews" description="Group agents into crews for multi-step workflows" action={{ label: 'Create a crew', onClick: () => setShowAddModal(true) }} />
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {activeCrew.map(crew => (
@@ -156,9 +149,7 @@ export function Teams() {
             ))}
           </div>
         ) : agents.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-sm text-lab-text-faint">No agents available</p>
-          </div>
+          <EmptyState icon={Bot} title="No agents available" description="Create agents first to build a roster" />
         ) : (
           <div className="card bg-transparent border-0 p-0 border border-lab-border rounded-md overflow-hidden">
             {agents.map(agent => (

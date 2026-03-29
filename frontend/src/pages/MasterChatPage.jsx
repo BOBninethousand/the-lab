@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { FlaskConical, Send, Loader2, Copy, Check, Plus, Trash2, Pencil, MessageSquare, Sparkles, Bot, CalendarDays, BookOpen, X } from 'lucide-react'
+import { EmptyState } from '../components/EmptyState'
 import { listConversations, createConversation, getConversation, deleteConversation, renameConversation, chatInConversation } from '../lib/api'
 import { parseUTC } from '../lib/time'
 import ReactMarkdown from 'react-markdown'
@@ -183,10 +184,7 @@ export function MasterChatPage() {
           {/* Conversation List */}
           <div className="flex-1 overflow-y-auto">
             {conversations.length === 0 ? (
-              <div className="text-center py-12 px-4">
-                <MessageSquare size={20} className="mx-auto text-lab-text-faint/30 mb-2" />
-                <p className="text-xs text-lab-text-faint">No conversations yet</p>
-              </div>
+              <EmptyState icon={MessageSquare} title="No conversations yet" description="Start a new chat to begin" />
             ) : (
               <div className="py-2">
                 {conversations.map(convo => (

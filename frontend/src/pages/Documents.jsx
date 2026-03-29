@@ -5,6 +5,7 @@ import { formatDistanceToNow, parseUTC } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useSearchParams } from 'react-router-dom'
+import { EmptyState } from '../components/EmptyState'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -388,13 +389,7 @@ export function Documents() {
             ))}
           </div>
         ) : reports.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-6 py-16">
-            <FileText size={40} className="text-lab-text-muted mb-4" />
-            <p className="text-sm font-medium text-lab-text-secondary mb-2">No reports yet</p>
-            <p className="text-xs text-lab-text-muted max-w-xs leading-relaxed">
-              Your AI agents will generate reports here automatically. Reports from Scout, Quill, Forge, and Radar will appear as they run on schedule.
-            </p>
-          </div>
+          <EmptyState icon={FileText} title="No reports yet" description="Reports will appear here as agents complete their scheduled tasks" />
         ) : (
           <div>
             {reports.map(report => (

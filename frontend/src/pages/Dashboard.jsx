@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { EmptyState } from '../components/EmptyState'
 import { StatCard } from '../components/StatCard'
 import { AgentRow } from '../components/AgentRow'
 import { ActivityList } from '../components/ActivityList'
@@ -186,9 +187,7 @@ export function Dashboard() {
                   ))}
                 </div>
               ) : (
-                <div className="card text-center py-4">
-                  <p className="text-xs text-lab-text-faint">Reports auto-publish to Notion. Generate a report to see it here.</p>
-                </div>
+                <div className="card"><EmptyState icon={FileText} title="No published reports" description="Reports auto-publish to Notion when agents generate them" /></div>
               )
             })()
           )}
@@ -302,11 +301,7 @@ export function Dashboard() {
             ))}
           </div>
         ) : latestReports.length === 0 ? (
-          <div className="card text-center py-6">
-            <Bot size={20} className="mx-auto text-lab-text-muted mb-2" />
-            <p className="text-xs text-lab-text-secondary">Agents are scheduled and will produce reports automatically</p>
-            <p className="text-[10px] text-lab-text-faint mt-1">First reports arrive at the next scheduled time</p>
-          </div>
+          <div className="card"><EmptyState icon={FileText} title="No reports yet" description="Agents are scheduled and will produce reports automatically" /></div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {latestReports.map(report => (
@@ -357,9 +352,7 @@ export function Dashboard() {
                   ))}
                 </div>
               ) : agents.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-sm text-lab-text-faint">No agents available</p>
-                </div>
+                <EmptyState icon={Bot} title="No agents online" description="Create agents to get started" />
               ) : (
                 <div className="border border-lab-border rounded-md overflow-hidden">
                   {agents.map(agent => (

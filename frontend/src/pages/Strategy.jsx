@@ -37,6 +37,7 @@ import {
   Eye,
   DollarSign,
 } from 'lucide-react'
+import { EmptyState } from '../components/EmptyState'
 
 const STATUS_COLOURS = {
   active: 'bg-emerald-500/20 text-emerald-400',
@@ -405,12 +406,8 @@ export function Strategy() {
           ))}
         </div>
       ) : strategies.length === 0 ? (
-        <div className="card text-center py-12">
-          <Target size={28} className="mx-auto text-lab-text-muted mb-3" />
-          <p className="text-sm text-lab-text-secondary mb-1">No strategies yet</p>
-          <p className="text-xs text-lab-text-muted">
-            Define the business problems you want agents to solve
-          </p>
+        <div className="card">
+          <EmptyState icon={Target} title="No strategies yet" description="Define strategies to coordinate agents toward business goals" action={{ label: 'New Strategy', onClick: () => setShowCreate(true) }} />
         </div>
       ) : (
         <div className="space-y-3">

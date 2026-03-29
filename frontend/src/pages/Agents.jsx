@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { X, Send, Trash2, Plus, FileText, Clock, Zap, Bot, Wifi } from 'lucide-react'
+import { EmptyState } from '../components/EmptyState'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { formatDistanceToNow, parseUTC } from '../lib/time'
 import { getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats, createCorrection } from '../lib/api'
@@ -299,12 +300,7 @@ export function Agents() {
             {[...Array(4)].map((_, i) => <div key={i} className="h-48 bg-lab-surface rounded animate-pulse" />)}
           </div>
         ) : agents.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-sm text-lab-text-faint mb-4">No agents available</p>
-            <button onClick={() => setShowAddModal(true)} className="text-xs text-lab-accent hover:text-lab-accent/80 transition-subtle">
-              Create your first agent
-            </button>
-          </div>
+          <EmptyState icon={Bot} title="No agents yet" description="Create your first agent to get started" action={{ label: 'Create agent', onClick: () => setShowAddModal(true) }} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {agents.map(agent => {
@@ -315,12 +311,12 @@ export function Agents() {
                   key={agent.id}
                   onClick={() => handleSelectAgent(agent)}
                   className={`card transition-subtle cursor-pointer border-lab-border hover:border-lab-border-hover group text-left ${
-                    selectedAgent?.id === agent.id ? 'border-lab-accent' : ''
-                  } ${isWorking ? 'ring-1 ring-blue-500/30' : ''}`}
+                    selectedAgent?.id === agent.id ? 'border-lab-accent ring-1 ring-lab-accent/30' : ''
+                  } ${isWorking ? 'ring-1 ring-blue-500/30 bg-blue-500/[0.02]' : ''}`}
                 >
                   <div className="flex items-start gap-3 mb-3">
                     <div className="relative">
-                      <AvatarCircle name={agent.name} agent={agent.name} size={36} />
+                      <AvatarCircle name={agent.name} agent={agent.name} size={40} />
                       {isWorking && (
                         <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-lab-surface animate-pulse" />
                       )}
@@ -331,13 +327,13 @@ export function Agents() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {isWorking ? (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/10 rounded text-[10px] text-blue-400">
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/15 rounded text-[10px] text-blue-400">
                           <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" /> Working
                         </span>
                       ) : agent.status === 'error' ? (
-                        <span className="px-2 py-0.5 bg-red-500/10 rounded text-[10px] text-red-400">Error</span>
+                        <span className="px-2 py-0.5 bg-red-500/15 rounded text-[10px] text-red-400">Error</span>
                       ) : (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 rounded text-[10px] text-emerald-400">
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 rounded text-[10px] text-emerald-400">
                           <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" /> Online
                         </span>
                       )}
@@ -353,18 +349,18 @@ export function Agents() {
                     </div>
                   </div>
 
-                  <p className="text-xs text-lab-text-secondary mb-4 line-clamp-2">{agent.goal || 'No description'}</p>
+                  <p className="text-xs text-lab-text-muted mb-4 line-clamp-2">{agent.goal || 'No description'}</p>
 
                   <div className="grid grid-cols-3 gap-2 mb-3">
-                    <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
+                    <div className="bg-lab-bg rounded px-2 py-1.5 text-center">
                       <div className="text-sm font-semibold text-lab-text-primary">{stats.reports || 0}</div>
                       <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><FileText size={9} /> Reports</div>
                     </div>
-                    <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
+                    <div className="bg-lab-bg rounded px-2 py-1.5 text-center">
                       <div className="text-sm font-semibold text-lab-text-primary">{stats.responses || 0}</div>
                       <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><Bot size={9} /> Chats</div>
                     </div>
-                    <div className="bg-lab-bg/50 rounded px-2 py-1.5 text-center">
+                    <div className="bg-lab-bg rounded px-2 py-1.5 text-center">
                       <div className="text-sm font-semibold text-lab-text-primary">{stats.apiCalls || 0}</div>
                       <div className="text-[10px] text-lab-text-muted flex items-center justify-center gap-1"><Zap size={9} /> Calls</div>
                     </div>

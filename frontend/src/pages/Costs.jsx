@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, Zap, Activity } from 'lucide-react'
+import { TrendingUp, Zap, Activity, BarChart3 } from 'lucide-react'
 import { getCostSummary, getCostScorecard, getCostToday } from '../lib/api'
+import { EmptyState } from '../components/EmptyState'
 
 function MiniBar({ value, max, color = 'bg-lab-accent' }) {
   const width = max > 0 ? Math.min(100, (value / max) * 100) : 0
@@ -128,7 +129,7 @@ export function Costs() {
           <h2 className="text-section-label mb-4">Usage by Agent</h2>
           <div className="space-y-3">
             {(summary?.by_agent || []).length === 0 ? (
-              <p className="text-xs text-lab-text-faint py-4 text-center">No usage data yet</p>
+              <EmptyState icon={BarChart3} title="No usage data yet" description="Usage data will appear as agents run tasks" />
             ) : (
               summary.by_agent.map(agent => (
                 <div key={agent.name} className="border border-lab-border rounded-lg p-4">
@@ -154,7 +155,7 @@ export function Costs() {
           <h2 className="text-section-label mb-4">Usage by Provider</h2>
           <div className="space-y-3">
             {(summary?.by_provider || []).length === 0 ? (
-              <p className="text-xs text-lab-text-faint py-4 text-center">No usage data yet</p>
+              <EmptyState icon={BarChart3} title="No usage data yet" description="Usage data will appear as agents run tasks" />
             ) : (
               summary.by_provider.map(prov => (
                 <div key={prov.provider} className="border border-lab-border rounded-lg p-4">
@@ -192,9 +193,7 @@ export function Costs() {
           </div>
 
           {(scorecard?.agents || []).length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-xs text-lab-text-faint">No agent activity this week</p>
-            </div>
+            <EmptyState icon={BarChart3} title="No usage data yet" description="Usage data will appear as agents run tasks" />
           ) : (
             scorecard.agents.map(agent => (
               <div

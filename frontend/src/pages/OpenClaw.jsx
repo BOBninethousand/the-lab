@@ -17,6 +17,7 @@ import {
   Key,
 } from 'lucide-react'
 import { api } from '../lib/api'
+import { EmptyState } from '../components/EmptyState'
 
 // OpenClaw API helpers
 async function getOpenClawStatus() {
@@ -417,12 +418,7 @@ export function OpenClaw() {
             </div>
             <div className="overflow-y-auto" style={{ maxHeight: 360 }}>
               {sessions.length === 0 ? (
-                <div className="text-center py-8">
-                  <Terminal size={24} className="mx-auto text-lab-text-muted mb-2 opacity-40" />
-                  <p className="text-xs text-lab-text-faint">
-                    {isConnected ? 'No sessions yet' : 'Connect to see sessions'}
-                  </p>
-                </div>
+                <EmptyState icon={Wifi} title={isConnected ? 'No sessions yet' : 'Not connected'} description={isConnected ? 'Sessions will appear when OpenClaw is active' : 'Connect to see sessions'} />
               ) : (
                 sessions.map(session => (
                   <button
@@ -470,9 +466,7 @@ export function OpenClaw() {
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ maxHeight: 300 }}>
                   {history.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-xs text-lab-text-faint">No messages yet</p>
-                    </div>
+                    <EmptyState icon={MessageSquare} title="No messages yet" description="Messages will appear as the session progresses" />
                   ) : (
                     history.map((msg, i) => (
                       <div
@@ -552,14 +546,8 @@ export function OpenClaw() {
           </div>
 
           {activity.length === 0 ? (
-            <div className="text-center py-12 border border-lab-border rounded-lg">
-              <Activity size={28} className="mx-auto text-lab-text-muted mb-3 opacity-30" />
-              <p className="text-xs text-lab-text-faint">
-                {isConnected
-                  ? 'No activity yet — send a message or run a task in OpenClaw'
-                  : 'Connect to OpenClaw to see real-time activity'
-                }
-              </p>
+            <div className="border border-lab-border rounded-lg">
+              <EmptyState icon={Activity} title={isConnected ? 'No activity yet' : 'Not connected'} description={isConnected ? 'Activity will appear when you send a message or run a task' : 'Connect to OpenClaw to see real-time activity'} />
             </div>
           ) : (
             <div className="border border-lab-border rounded-lg overflow-hidden">

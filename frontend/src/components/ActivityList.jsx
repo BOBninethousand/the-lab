@@ -1,4 +1,6 @@
+import { Activity } from 'lucide-react'
 import { formatDistanceToNow } from '../lib/time'
+import { EmptyState } from './EmptyState'
 
 function formatEvent(event) {
   const data = event.data || {}
@@ -41,10 +43,7 @@ export function ActivityList({ events, isLoading }) {
 
   if (!events || events.length === 0) {
     return (
-      <div className="text-center py-8">
-        <p className="text-xs text-lab-text-faint">Waiting for agent activity...</p>
-        <p className="text-[10px] text-lab-text-faint mt-1">Events appear here in real-time</p>
-      </div>
+      <EmptyState icon={Activity} title="Waiting for activity" description="Events appear here in real-time" />
     )
   }
 

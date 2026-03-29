@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Play, Trash2, ChevronDown, Star, Clock, CheckCircle, XCircle, AlertTriangle, X } from 'lucide-react'
+import { Plus, Play, Trash2, ChevronDown, Star, Clock, CheckCircle, XCircle, AlertTriangle, X, CalendarClock, CalendarDays } from 'lucide-react'
+import { EmptyState } from '../components/EmptyState'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { ScheduleWizard } from '../components/calendar/ScheduleWizard'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -179,9 +180,7 @@ export function Calendar() {
           {isLoading ? (
             [...Array(3)].map((_, i) => <div key={i} className="h-20 bg-lab-surface rounded animate-pulse" />)
           ) : jobs.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-sm text-lab-text-faint">No scheduled jobs yet</p>
-            </div>
+            <EmptyState icon={CalendarClock} title="No scheduled jobs" description="Create a schedule to automate agent tasks" />
           ) : (
             jobs.map(job => {
               const agent = getAgent(job.agent_id)
@@ -373,9 +372,7 @@ export function Calendar() {
               </h3>
 
               {executions.length === 0 ? (
-                <div className="text-center py-8 border border-lab-border rounded-lg">
-                  <p className="text-sm text-lab-text-faint">No executions yet. Click Run Now or wait for the next scheduled run.</p>
-                </div>
+                <EmptyState icon={Clock} title="No executions yet" description="Click Run Now or wait for the next scheduled run" />
               ) : (
                 <div className="space-y-2">
                   {executions.map(exec => (
@@ -451,9 +448,7 @@ export function Calendar() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-lab-text-faint">Select a job to view details and execution history</p>
-          </div>
+          <EmptyState icon={CalendarDays} title="Select a job" description="Choose a job from the list to view details and execution history" />
         )}
       </div>
 
