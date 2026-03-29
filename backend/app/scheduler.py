@@ -335,6 +335,37 @@ class SchedulerManager:
         job_config["next_run"] = None
         return ScheduledJob(**job_config)
 
+    def update_job(self, job_id: str, updates: dict) -> str:
+        """Update an existing scheduled job's properties."""
+        if job_id not in self.jobs:
+            return f"Error: Job {job_id} not found"
+
+        job_config = self.jobs[job_id]
+        changed = []
+
+        if "cron_expression" in updates:
+            job_config["cron_expression"] = updates["cron_expression"]
+            changed.append(f"cron → {updates['cron_expression']}")
+            # Reschedule the APScheduler job
+            if self.scheduler.running and job_config.get("enabled", True):
+                try:
+                    self.scheduler.remove_job(job_id)
+                except Exception:
+                    pass
+                self._register_job(job_id, job_config)
+
+        if "prompt" in updates:
+            job_config["prompt"] = updates["prompt"]
+            changed.append("prompt updated")
+
+        if "name" in updates:
+            old_name = job_config.get("name", "")
+            job_config["name"] = updates["name"]
+            changed.append(f"name → {updates['name']} (was {old_name})")
+
+        self._save_jobs()
+        return f"Updated job '{job_config.get('name', job_id)}' (ID: {job_id}). Changes: {', '.join(changed)}"
+
     def list_jobs(self) -> List[dict]:
         result = []
         for job_id, job_config in self.jobs.items():

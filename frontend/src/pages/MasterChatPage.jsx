@@ -25,7 +25,8 @@ export function MasterChatPage() {
   const [editingId, setEditingId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [progressMessages, setProgressMessages] = useState([])
+  const [progressSteps, setProgressSteps] = useState([])
+  const [isProcessing, setIsProcessing] = useState(false)
   const [selectedImage, setSelectedImage] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -46,10 +47,9 @@ export function MasterChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Process WebSocket progress events during loading
+  // Process WebSocket progress events during processing
   useEffect(() => {
-    if (!isLoading) {
-      if (progressMessages.length > 0) setProgressMessages([])
+    if (!isProcessing) {
       lastEventCountRef.current = events.length
       return
     }
@@ -57,11 +57,19 @@ export function MasterChatPage() {
       const newEvents = events.slice(0, events.length - lastEventCountRef.current)
       const progress = newEvents.filter(e => e.type === 'master_chat_progress').map(e => e.data)
       if (progress.length > 0) {
-        setProgressMessages(prev => [...prev, ...progress.reverse()])
+        for (const step of progress.reverse()) {
+          if (step.stage === 'tool_start' || step.stage === 'agent_turn') {
+            setProgressSteps(prev => [...prev, { id: Date.now() + Math.random(), description: step.description, status: 'running', agent: step.agent_name }])
+          } else if (step.stage === 'tool_complete' || step.stage === 'agent_done') {
+            setProgressSteps(prev => prev.map(s => s.description === step.description ? { ...s, status: 'done' } : s))
+          } else if (step.stage === 'thinking') {
+            setProgressSteps(prev => [...prev, { id: Date.now() + Math.random(), description: step.description, status: 'thinking' }])
+          }
+        }
         lastEventCountRef.current = events.length
       }
     }
-  }, [events, isLoading])
+  }, [events, isProcessing])
 
   // Auto-grow textarea
   useEffect(() => {
@@ -193,6 +201,8 @@ export function MasterChatPage() {
     setInput('')
     setMessages(prev => [...prev, { role: 'user', content: messageText, timestamp: new Date().toISOString(), image: currentImagePreview }])
     setIsLoading(true)
+    setIsProcessing(true)
+    setProgressSteps([])
 
     try {
       let data
@@ -213,6 +223,8 @@ export function MasterChatPage() {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message || 'Failed to reach Master Chat'}`, timestamp: new Date().toISOString() }])
     } finally {
       setIsLoading(false)
+      setIsProcessing(false)
+      setProgressSteps([])
     }
   }
 
@@ -461,34 +473,51 @@ export function MasterChatPage() {
               </div>
             ))}
 
-            {/* Loading with progress indicators */}
-            {isLoading && (
+            {/* Live progress + typing indicator */}
+            {isProcessing && (
               <div className="flex justify-start">
-                <div className="bg-lab-elevated border border-lab-border rounded-xl px-5 py-3 min-w-[200px]">
-                  {progressMessages.length === 0 ? (
-                    <div className="flex items-center gap-2.5">
-                      <Loader2 size={14} className="text-lab-accent animate-spin" />
-                      <span className="text-sm text-lab-text-muted">Thinking...</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {progressMessages.map((msg, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm animate-fadeIn">
-                          {(msg.stage === 'tool_start' || msg.stage === 'agent_turn') ? (
-                            <>
-                              <span className="text-lab-accent animate-pulse">●</span>
-                              <span className="text-lab-text-secondary">{msg.description}</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-lab-success">✓</span>
-                              <span className="text-lab-text-muted">{(msg.description || msg.tool || '').replace('...', '')} done</span>
-                            </>
+                <div className="bg-lab-elevated border border-lab-border rounded-xl px-5 py-3 min-w-[220px] max-w-[85%]">
+                  {progressSteps.length > 0 && (
+                    <div className="flex flex-col gap-1.5 mb-2">
+                      {progressSteps.map((step) => (
+                        <div
+                          key={step.id}
+                          className="flex items-center gap-2.5 text-sm animate-slideIn"
+                          style={{ opacity: step.status === 'done' ? 0.5 : 1 }}
+                        >
+                          {step.status === 'running' && (
+                            <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lab-accent opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-lab-accent"></span>
+                            </span>
+                          )}
+                          {step.status === 'done' && (
+                            <span className="text-lab-success text-xs flex-shrink-0">✓</span>
+                          )}
+                          {step.status === 'thinking' && (
+                            <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lab-warning opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-lab-warning"></span>
+                            </span>
+                          )}
+                          <span className={step.status === 'done' ? 'text-lab-text-muted' : 'text-lab-text-secondary'}>
+                            {step.status === 'done' ? step.description.replace('...', ' done') : step.description}
+                          </span>
+                          {step.agent && (
+                            <span className="text-xs text-lab-accent/70 ml-auto">{step.agent}</span>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
+                  <div className="flex items-center gap-1.5 text-sm text-lab-text-muted">
+                    <div className="flex gap-1">
+                      <span className="w-1.5 h-1.5 bg-lab-text-muted rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-1.5 h-1.5 bg-lab-text-muted rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-1.5 h-1.5 bg-lab-text-muted rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    </div>
+                    <span className="ml-1">Master Chat is working...</span>
+                  </div>
                 </div>
               </div>
             )}

@@ -38,49 +38,36 @@ ACTION_KEYWORDS = [
 
 
 def _tool_summary(fn_name: str, fn_args: dict) -> str:
-    """Human-readable one-liner for a tool call."""
+    """Human-readable one-liner with emoji for a tool call badge."""
+    agent = fn_args.get("agent_name", "")
     action = fn_args.get("action", "")
-    name = fn_args.get("name", fn_args.get("agent_name", fn_args.get("job_name", "")))
-    if fn_name == "chat_with_agent":
-        return f"Routed to {fn_args.get('agent_name', 'agent')}"
-    if fn_name == "collaborate":
-        agents = fn_args.get("agent_names", [])
-        return f"Collaboration: {', '.join(agents)}" if agents else "Multi-agent collaboration"
-    if fn_name == "manage_agents":
-        return f"{action.title()}d agent {name}" if action == "create" else f"{action.title()} agents"
-    if fn_name == "manage_schedules":
-        return f"{action.title()}d schedule {name}" if name else f"{action.title()} schedules"
-    if fn_name == "run_job_now":
-        return f"Ran {fn_args.get('job_name', 'job')}"
-    if fn_name == "manage_reports":
-        return f"{action.title()} report" if action else "Managed reports"
-    if fn_name == "manage_knowledge":
-        return f"{action.title()} knowledge" if action else "Managed knowledge"
-    if fn_name == "manage_strategies":
-        return f"{action.title()}d strategy {name}" if name else f"{action.title()} strategies"
-    if fn_name == "execute_strategy":
-        return "Executed strategy"
-    if fn_name == "search_knowledge":
-        return "Searched knowledge"
-    if fn_name == "execute_skill":
-        return f"Ran skill: {fn_args.get('skill_name', 'unknown')}"
-    if fn_name == "manage_skills":
-        return f"{action.title()} skills"
-    if fn_name == "publish_to_notion":
-        return "Published to Notion"
-    if fn_name == "manage_notion_tasks":
-        return f"{action.replace('_', ' ').title()} Notion tasks"
-    if fn_name == "get_lab_status":
-        return "Checked lab status"
-    if fn_name == "get_cost_summary":
-        return "Checked costs"
-    if fn_name == "add_correction":
-        return f"Added correction for {fn_args.get('agent_name', 'agent')}"
-    if fn_name == "rate_execution":
-        return f"Rated execution {fn_args.get('rating', '?')}/5"
-    if fn_name.startswith("submit_") or fn_name.startswith("check_hdl") or fn_name.startswith("reset_hdl") or fn_name.startswith("run_hdl"):
-        return fn_name.replace("_", " ").title()
-    return fn_name.replace("_", " ").title()
+    persona = fn_args.get("persona_name", "")
+    summaries = {
+        "chat_with_agent": f"\U0001f4ac {agent}" if agent else "\U0001f4ac Agent chat",
+        "collaborate": "\U0001f465 Collaboration" + (f" with {', '.join(a.get('agent_name', '') for a in fn_args.get('agents', []))}" if fn_args.get("agents") else ""),
+        "search_knowledge": "\U0001f50d Knowledge search",
+        "publish_to_notion": "\U0001f4dd Published to Notion",
+        "submit_health_check": f"\U0001f3e5 Health check: {persona}" if persona else "\U0001f3e5 Health check",
+        "submit_longevity_check": f"\U0001f9ec Longevity check: {persona}" if persona else "\U0001f9ec Longevity check",
+        "check_hdl_status": "\U0001f4ca HDL status check",
+        "reset_hdl_credits": "\U0001f4b3 Credits reset",
+        "run_hdl_diagnostics": "\U0001f527 HDL diagnostics",
+        "get_lab_status": "\U0001f4ca Lab status",
+        "manage_agents": f"\u2699\ufe0f Agents: {action}",
+        "manage_schedules": f"\U0001f4c5 Schedules: {action}",
+        "manage_reports": f"\U0001f4c4 Reports: {action}",
+        "manage_knowledge": f"\U0001f9e0 Knowledge: {action}",
+        "manage_strategies": f"\U0001f3af Strategies: {action}",
+        "manage_notion_tasks": f"\U0001f4cb Notion tasks: {action}",
+        "manage_skills": f"\U0001f527 Skills: {action}",
+        "execute_skill": f"\U0001f527 Skill: {fn_args.get('skill_name', '')}",
+        "execute_strategy": "\U0001f3af Strategy execution",
+        "run_job_now": f"\u25b6\ufe0f Ran job",
+        "add_correction": f"\U0001f4dd Correction for {agent}" if agent else "\U0001f4dd Correction",
+        "get_cost_summary": "\U0001f4b0 Cost summary",
+        "rate_execution": f"\u2b50 Rated execution",
+    }
+    return summaries.get(fn_name, f"\u2699\ufe0f {fn_name.replace('_', ' ').title()}")
 
 
 def _describe_tool_action(fn_name: str, fn_args: dict) -> str:
@@ -111,71 +98,44 @@ def _describe_tool_action(fn_name: str, fn_args: dict) -> str:
     return descriptions.get(fn_name, f"Running {fn_name.replace('_', ' ')}...")
 
 
-SYSTEM_PROMPT = """You are The Lab's Master Chat — the AI command centre that orchestrates everything.
+SYSTEM_PROMPT = """You are Master Chat — The Lab's AI command centre. You orchestrate agents and tools to complete any task.
 
-## Your Role
-You help the user manage their AI agent operations hub. You have FULL access to create, modify, and delete anything in The Lab — agents, schedules, Notion tasks, knowledge, strategies, and more. Use your tools to execute requests immediately.
+## HOW YOU THINK
 
-## Available Agents
-{agent_list}
-Plus any custom agents the user has created.
+1. **Plan first.** Before calling any tools, briefly state your plan. What do you need to find out? Which tools will you use? Which agents should be involved?
 
-## CRITICAL RULES
-1. NEVER say you can't do something when you have a tool for it. You have tools for EVERYTHING listed below.
-2. NEVER ask the user to do something manually that you can do with a tool call.
-3. When the user asks you to create, modify, or delete anything — USE THE TOOL IMMEDIATELY. Don't explain what you would do. Just do it.
-4. If a request requires multiple tools, call them all in one turn.
+2. **Act step by step.** Call the tools you need. After each round of results, assess: "Did I get what I needed? Do I need to dig deeper?" If yes, call more tools. Don't stop halfway.
 
-## Your Capabilities (all available NOW via tools)
-You CAN do all of these right now:
-- **Create new agents** → manage_agents(action="create", agent_name=..., role=..., goal=..., backstory=...)
-- **List/inspect agents** → manage_agents(action="list") or manage_agents(action="get", agent_name=...)
-- **View agent chat history** → manage_agents(action="get_history", agent_name=...)
-- **Create cron jobs** → manage_schedules(action="create", job_name=..., agent_name=..., prompt=..., frequency=..., time=...)
-- **List/delete/toggle schedules** → manage_schedules(action="list|delete|toggle", job_name=...)
-- **View past job runs** → manage_schedules(action="executions", job_name=...)
-- **View upcoming calendar** → manage_schedules(action="calendar")
-- **Run a job immediately** → run_job_now(job_name=...)
-- **Create Notion tasks** → manage_notion_tasks(action="create", title=..., agent_name=..., priority=...)
-- **List/update Notion tasks** → manage_notion_tasks(action="list_active|list_new|set_status|push_result")
-- **Add/update/delete knowledge** → manage_knowledge(action="add|update|delete")
-- **Search knowledge** → search_knowledge(query=...)
-- **Create/manage strategies** → manage_strategies(action="create|list|update|delete|progress")
-- **Publish to Notion** → publish_to_notion(title=..., content=..., agent_name=...)
-- **Send work to an agent** → chat_with_agent(agent_name=..., message=...)
-- **Correct agent behaviour** → add_correction(agent_name=..., original_response=..., correction=...)
-- **Rate job output** → rate_execution(job_name=..., rating=1-5)
-- **Check spending** → get_cost_summary(days=7)
-- **Get Lab status** → get_lab_status()
-- **Run a skill (multi-step workflow)** → execute_skill(skill_name=..., params={...})
-- **List/create/delete skills** → manage_skills(action="list|create|delete|get")
-- **Collaborate across agents** → collaborate(task=..., agents=[{agent_name, instruction}], mode="sequential"|"parallel")
-- **Execute a strategy** → execute_strategy(strategy_id=..., task=...)
+3. **Verify your work.** After making changes (creating agents, modifying schedules, submitting forms), call a verification tool to confirm it worked. Don't assume success.
 
-## Available Skills (multi-step workflows)
-- **deploy_agent** — Create agent + schedule + first run (params: name, role, goal, backstory, prompt, frequency, time)
-- **morning_briefing** — Full status overview: agents, reports, calendar, spending
-- **onboard_knowledge** — Search existing + add new knowledge (params: topic, title, content, category)
-- **weekly_audit** — Lab status, costs, all reports, strategy progress
+4. **Report what you DID, not what you WILL do.** Never say "I'll report back" or "I'll check on that" — you must actually do it NOW using tools, then report the results. The user cannot wait for you to come back later. Everything must happen in this conversation turn.
 
-## How to Work
-- Execute requests immediately with tools. Don't ask for confirmation — just do it and report what you did.
-- If the user wants a specialist agent that doesn't exist, create one with manage_agents(action="create"), then use it.
-- If the user doesn't specify an agent, choose the best one: Scout for research/leads, Quill for content/writing, Forge for tech, Radar for outreach/sales.
-- Chain multiple tools when needed (e.g., create agent → create schedule → run job — all in one turn).
-- For multi-step workflows, prefer using skills (execute_skill) over chaining tools manually.
-- When a task needs multiple specialists, use collaborate() instead of calling chat_with_agent multiple times. This shows each agent's contribution as a group conversation.
-- When the user asks to execute/run a strategy, use execute_strategy().
-- Always explain what you did and what happened.
-- Use British English. Be direct, no fluff.
-- Apply Hormozi's priority framework: (1) Revenue (2) Credibility/proof (3) Distribution (4) Product strength.
+5. **Be specific.** Don't say "I checked the schedules." Say "I found 10 scheduled jobs: Scout runs weekdays at 09:00, Agent Bob runs Mondays at 10:00..." Give concrete data.
 
-## Attribution Rules
-- When you use agents via chat_with_agent or collaborate, mention which agents contributed at the end of your response.
-- Format: "**Agents used:** Scout, Quill, Radar"
+## TOOL USAGE RULES
+
+- When a request requires multiple tools, use them ALL. Don't stop after the first one.
+- When you use agents, ALWAYS mention which agents you used: "**Agents used:** Scout, Quill"
+- When you create or modify something, verify it with a follow-up tool call.
+- When collaborating agents, show each agent's contribution with their name in bold.
+- If a tool returns an error, explain what went wrong and try an alternative approach.
+- NEVER promise future action — act NOW or explain why you can't.
 - When publishing to Notion, include the agents used in the report metadata via the agents_used parameter.
+- If the user doesn't specify an agent, choose the best one: Scout for research/leads, Quill for content/writing, Forge for tech, Radar for outreach/sales.
+- For multi-step workflows, prefer using skills (execute_skill) over chaining tools manually.
 
-## Context
+## FORMATTING
+
+- Use markdown for structure (headings, bullets, bold)
+- Keep responses concise but complete
+- Show data in tables when comparing items
+- Include relevant metrics and numbers
+- Use British English. Be direct, no fluff.
+
+## AVAILABLE AGENTS
+{agent_list}
+
+## YOUR MEMORY
 {memory_context}
 """
 
@@ -300,18 +260,22 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "manage_schedules",
-            "description": "Manage scheduled jobs: create, list, delete, toggle pause/resume, view past executions, or get upcoming calendar.",
+            "description": "Manage scheduled jobs: create, list, delete, toggle pause/resume, update existing, view past executions, or get upcoming calendar.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": ["create", "list", "delete", "toggle", "executions", "calendar"], "description": "What to do"},
-                    "job_name": {"type": "string", "description": "Job name (for create/delete/toggle/executions)"},
+                    "action": {"type": "string", "enum": ["create", "list", "delete", "toggle", "executions", "calendar", "update"], "description": "What to do"},
+                    "job_name": {"type": "string", "description": "Job name (for create/delete/toggle/executions/update)"},
                     "agent_name": {"type": "string", "description": "Agent to assign (create only)"},
                     "prompt": {"type": "string", "description": "What the agent should do each run (create only)"},
                     "frequency": {"type": "string", "enum": ["daily", "weekdays", "weekly", "monthly"], "description": "How often (create only)"},
                     "time": {"type": "string", "description": "HH:MM 24h format (create only, default 09:00)"},
                     "days": {"type": "integer", "description": "Calendar lookahead in days (calendar only, default 7)"},
                     "limit": {"type": "integer", "description": "Number of past executions to show (executions only, default 5)"},
+                    "job_id": {"type": "string", "description": "Job ID to update (for update action)"},
+                    "new_cron": {"type": "string", "description": "New cron expression (for update action, e.g. '0 10 * * 1')"},
+                    "new_prompt": {"type": "string", "description": "New prompt/instructions for the job (for update action)"},
+                    "new_name": {"type": "string", "description": "New name for the job (for update action)"},
                 },
                 "required": ["action"],
             },
@@ -1029,6 +993,32 @@ class MasterChat:
                         lines.append(f"- {entry.get('date', '?')} {entry.get('time', '?')} — **{entry.get('job_name', '?')}** ({agent_name})")
                     return f"**Upcoming schedule ({days} days):**\n" + "\n".join(lines)
 
+                elif action == "update":
+                    job_id = args.get("job_id")
+                    if not job_id:
+                        # Try to resolve by name
+                        job_name = args.get("job_name", "")
+                        if job_name:
+                            for jid, jcfg in self.scheduler_manager.jobs.items():
+                                if jcfg.get("name", "").lower() == job_name.lower():
+                                    job_id = jid
+                                    break
+                    if not job_id:
+                        return "Error: provide job_id or job_name for update action"
+                    updates = {}
+                    if args.get("new_cron"):
+                        updates["cron_expression"] = args["new_cron"]
+                    if args.get("new_prompt"):
+                        updates["prompt"] = args["new_prompt"]
+                    if args.get("new_name"):
+                        updates["name"] = args["new_name"]
+                    if not updates:
+                        return "Error: provide at least one of new_cron, new_prompt, or new_name"
+                    result = self.scheduler_manager.update_job(job_id, updates)
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("schedule_changed", {"action": "updated", "job_id": job_id})
+                    return result
+
                 return f"Unknown manage_schedules action: {action}"
 
             elif tool_name == "manage_reports":
@@ -1710,104 +1700,121 @@ class MasterChat:
         # Save user message (text only for history)
         self._save_message("user", user_message)
 
-        # Call LLM
+        # Call LLM with multi-iteration tool loop
         try:
             logger.info(f"Master Chat: provider={provider}, model={model}, tools={len(TOOLS)}, history={len(history)}")
 
             if provider == "openai":
                 client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=90.0)
             elif provider == "anthropic":
-                # Anthropic tool use via openai-compatible endpoint not supported
-                # Fall back to openai for now, or use langchain
                 client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=90.0)
             else:
                 client = OpenAI(api_key="ollama", base_url=settings.OLLAMA_BASE_URL + "/v1", timeout=90.0)
 
-            # Detect action-oriented messages and force tool usage
+            # Detect action-oriented messages and force tool usage on first call
             msg_lower = user_message.lower()
             is_action = any(kw in msg_lower for kw in ACTION_KEYWORDS)
             tool_mode = "required" if is_action else "auto"
             logger.info(f"Master Chat: tool_choice={tool_mode} (action_detected={is_action})")
 
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=TOOLS,
-                tool_choice=tool_mode,
-            )
+            all_tools_used = []
+            total_input = 0
+            total_output = 0
+            max_iterations = 10
+            iteration = 0
+            final_text = ""
 
-            assistant_msg = response.choices[0].message
-            tools_used = []
+            while iteration < max_iterations:
+                iteration += 1
 
-            # Handle tool calls
-            if assistant_msg.tool_calls:
-                logger.info(f"Master Chat: GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
-                tool_results = []
+                # Broadcast thinking between iterations
+                if iteration > 1 and self.ws_manager:
+                    await self.ws_manager.broadcast("master_chat_progress", {
+                        "stage": "thinking",
+                        "description": "Analysing results and planning next steps...",
+                        "iteration": iteration,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=TOOLS,
+                    tool_choice=tool_mode if iteration == 1 else "auto",
+                )
+
+                if response.usage:
+                    total_input += response.usage.prompt_tokens or 0
+                    total_output += response.usage.completion_tokens or 0
+
+                assistant_msg = response.choices[0].message
+
+                # If no tool calls, this is the final response — done
+                if not assistant_msg.tool_calls:
+                    final_text = assistant_msg.content or ""
+                    logger.info(f"Master Chat: iteration {iteration} — final response (no tool calls). Preview: {final_text[:150]}")
+                    break
+
+                # GPT wants to call tools — execute them all
+                logger.info(f"Master Chat: iteration {iteration} — GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
+                messages.append(assistant_msg.model_dump())
+
                 for tool_call in assistant_msg.tool_calls:
                     fn_name = tool_call.function.name
                     fn_args = json.loads(tool_call.function.arguments)
                     logger.info(f"Master Chat: executing {fn_name}({json.dumps(fn_args)[:200]})")
+
                     if self.ws_manager:
                         await self.ws_manager.broadcast("master_chat_progress", {
                             "stage": "tool_start",
                             "tool": fn_name,
                             "description": _describe_tool_action(fn_name, fn_args),
+                            "agent_name": fn_args.get("agent_name"),
+                            "iteration": iteration,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         })
+
                     result = await self._execute_tool(fn_name, fn_args)
                     logger.info(f"Master Chat: {fn_name} result: {result[:200]}")
+
                     if self.ws_manager:
                         await self.ws_manager.broadcast("master_chat_progress", {
                             "stage": "tool_complete",
                             "tool": fn_name,
                             "description": _describe_tool_action(fn_name, fn_args),
+                            "agent_name": fn_args.get("agent_name"),
+                            "iteration": iteration,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         })
-                    tool_results.append({
+
+                    messages.append({
                         "tool_call_id": tool_call.id,
                         "role": "tool",
                         "content": result,
                     })
-                    tools_used.append({"tool": fn_name, "summary": _tool_summary(fn_name, fn_args)})
+                    all_tools_used.append({"tool": fn_name, "summary": _tool_summary(fn_name, fn_args)})
 
-                # Send tool results back for final response
-                messages.append(assistant_msg.model_dump())
-                messages.extend(tool_results)
+                # Loop continues — GPT sees results and decides to call more tools or respond
+            else:
+                # Hit max iterations safety limit
+                final_text = "I've reached my processing limit for this request. Here's what I've done so far based on the tools I've called."
+                logger.warning(f"Master Chat: hit max_iterations ({max_iterations})")
 
-                final_response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                )
-                final_text = final_response.choices[0].message.content or ""
-
-                # Log cost
-                total_input = (response.usage.prompt_tokens if response.usage else 0) + \
-                              (final_response.usage.prompt_tokens if final_response.usage else 0)
-                total_output = (response.usage.completion_tokens if response.usage else 0) + \
-                               (final_response.usage.completion_tokens if final_response.usage else 0)
+            # Log aggregated cost
+            if total_input or total_output:
                 self.cost_tracker.log_call(
                     agent_id="master_chat", agent_name="Master Chat",
                     provider=provider, model=model,
                     input_tokens=total_input, output_tokens=total_output,
-                    source="master_chat", task_type="orchestration",
+                    source="master_chat",
+                    task_type="orchestration" if all_tools_used else "chat",
                 )
-            else:
-                logger.info(f"Master Chat: GPT returned text only (no tool calls). Preview: {(assistant_msg.content or '')[:150]}")
-                final_text = assistant_msg.content or ""
-                if response.usage:
-                    self.cost_tracker.log_call(
-                        agent_id="master_chat", agent_name="Master Chat",
-                        provider=provider, model=model,
-                        input_tokens=response.usage.prompt_tokens,
-                        output_tokens=response.usage.completion_tokens,
-                        source="master_chat", task_type="chat",
-                    )
 
             # Save assistant response
             self._save_message("assistant", final_text)
 
             # Extract learnings in background (non-blocking)
-            if tools_used and self.agent_memory_manager:
+            if all_tools_used and self.agent_memory_manager:
                 import asyncio as _aio
                 _aio.create_task(self._extract_learnings(user_message, final_text))
             # Extract image analysis as memory
@@ -1825,7 +1832,7 @@ class MasterChat:
                         logger.warning(f"Image memory extraction failed: {e}")
                 _aio.create_task(_save_image_memory())
 
-            return {"response": final_text, "tools_used": tools_used}
+            return {"response": final_text, "tools_used": all_tools_used, "iterations": iteration}
 
         except Exception as e:
             error_msg = f"Master Chat error: {str(e)}"
@@ -1897,7 +1904,7 @@ class MasterChat:
         # Save user message (text only for history)
         convo_id = self._save_message_to_convo(convo_id, "user", user_message)
 
-        # Call LLM (same logic as chat() method)
+        # Call LLM with multi-iteration tool loop
         try:
             logger.info(f"Master Chat: provider={provider}, model={model}, tools={len(TOOLS)}, convo={convo_id[:8]}")
 
@@ -1912,81 +1919,96 @@ class MasterChat:
             is_action = any(kw in msg_lower for kw in ACTION_KEYWORDS)
             tool_mode = "required" if is_action else "auto"
 
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=TOOLS,
-                tool_choice=tool_mode,
-            )
+            all_tools_used = []
+            total_input = 0
+            total_output = 0
+            max_iterations = 10
+            iteration = 0
+            final_text = ""
 
-            assistant_msg = response.choices[0].message
-            tools_used = []
+            while iteration < max_iterations:
+                iteration += 1
 
-            if assistant_msg.tool_calls:
-                logger.info(f"Master Chat: GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
-                tool_results = []
+                if iteration > 1 and self.ws_manager:
+                    await self.ws_manager.broadcast("master_chat_progress", {
+                        "stage": "thinking",
+                        "description": "Analysing results and planning next steps...",
+                        "iteration": iteration,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=TOOLS,
+                    tool_choice=tool_mode if iteration == 1 else "auto",
+                )
+
+                if response.usage:
+                    total_input += response.usage.prompt_tokens or 0
+                    total_output += response.usage.completion_tokens or 0
+
+                assistant_msg = response.choices[0].message
+
+                if not assistant_msg.tool_calls:
+                    final_text = assistant_msg.content or ""
+                    logger.info(f"Master Chat: convo iteration {iteration} — final response. Preview: {final_text[:150]}")
+                    break
+
+                logger.info(f"Master Chat: convo iteration {iteration} — GPT called {len(assistant_msg.tool_calls)} tools: {[tc.function.name for tc in assistant_msg.tool_calls]}")
+                messages.append(assistant_msg.model_dump())
+
                 for tool_call in assistant_msg.tool_calls:
                     fn_name = tool_call.function.name
                     fn_args = json.loads(tool_call.function.arguments)
                     logger.info(f"Master Chat: executing {fn_name}({json.dumps(fn_args)[:200]})")
+
                     if self.ws_manager:
                         await self.ws_manager.broadcast("master_chat_progress", {
                             "stage": "tool_start",
                             "tool": fn_name,
                             "description": _describe_tool_action(fn_name, fn_args),
+                            "agent_name": fn_args.get("agent_name"),
+                            "iteration": iteration,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         })
+
                     result = await self._execute_tool(fn_name, fn_args)
                     logger.info(f"Master Chat: {fn_name} result: {result[:200]}")
+
                     if self.ws_manager:
                         await self.ws_manager.broadcast("master_chat_progress", {
                             "stage": "tool_complete",
                             "tool": fn_name,
                             "description": _describe_tool_action(fn_name, fn_args),
+                            "agent_name": fn_args.get("agent_name"),
+                            "iteration": iteration,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         })
-                    tool_results.append({
+
+                    messages.append({
                         "tool_call_id": tool_call.id,
                         "role": "tool",
                         "content": result,
                     })
-                    tools_used.append({"tool": fn_name, "summary": _tool_summary(fn_name, fn_args)})
+                    all_tools_used.append({"tool": fn_name, "summary": _tool_summary(fn_name, fn_args)})
+            else:
+                final_text = "I've reached my processing limit for this request. Here's what I've done so far based on the tools I've called."
+                logger.warning(f"Master Chat: convo hit max_iterations ({max_iterations})")
 
-                messages.append(assistant_msg.model_dump())
-                messages.extend(tool_results)
-
-                final_response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                )
-                final_text = final_response.choices[0].message.content or ""
-
-                total_input = (response.usage.prompt_tokens if response.usage else 0) + \
-                              (final_response.usage.prompt_tokens if final_response.usage else 0)
-                total_output = (response.usage.completion_tokens if response.usage else 0) + \
-                               (final_response.usage.completion_tokens if final_response.usage else 0)
+            if total_input or total_output:
                 self.cost_tracker.log_call(
                     agent_id="master_chat", agent_name="Master Chat",
                     provider=provider, model=model,
                     input_tokens=total_input, output_tokens=total_output,
-                    source="master_chat", task_type="orchestration",
+                    source="master_chat",
+                    task_type="orchestration" if all_tools_used else "chat",
                 )
-            else:
-                logger.info(f"Master Chat: GPT returned text only (no tool calls).")
-                final_text = assistant_msg.content or ""
-                if response.usage:
-                    self.cost_tracker.log_call(
-                        agent_id="master_chat", agent_name="Master Chat",
-                        provider=provider, model=model,
-                        input_tokens=response.usage.prompt_tokens,
-                        output_tokens=response.usage.completion_tokens,
-                        source="master_chat", task_type="chat",
-                    )
 
             self._save_message_to_convo(convo_id, "assistant", final_text)
 
             # Extract learnings in background (non-blocking)
-            if tools_used and self.agent_memory_manager:
+            if all_tools_used and self.agent_memory_manager:
                 import asyncio as _aio
                 _aio.create_task(self._extract_learnings(user_message, final_text))
             # Extract image analysis as memory
@@ -2004,7 +2026,7 @@ class MasterChat:
                         logger.warning(f"Image memory extraction failed: {e}")
                 _aio.create_task(_save_image_memory())
 
-            return {"convo_id": convo_id, "response": final_text, "tools_used": tools_used}
+            return {"convo_id": convo_id, "response": final_text, "tools_used": all_tools_used, "iterations": iteration}
 
         except Exception as e:
             error_msg = f"Master Chat error: {str(e)}"
