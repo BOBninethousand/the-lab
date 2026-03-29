@@ -82,6 +82,35 @@ def _tool_summary(fn_name: str, fn_args: dict) -> str:
         return fn_name.replace("_", " ").title()
     return fn_name.replace("_", " ").title()
 
+
+def _describe_tool_action(fn_name: str, fn_args: dict) -> str:
+    """Human-readable progress description for a tool about to execute."""
+    descriptions = {
+        "chat_with_agent": f"Routing to {fn_args.get('agent_name', 'agent')}...",
+        "collaborate": "Starting multi-agent collaboration...",
+        "search_knowledge": "Searching knowledge base...",
+        "publish_to_notion": "Publishing to Notion...",
+        "submit_health_check": f"Submitting health check for {fn_args.get('persona_name', 'patient')}...",
+        "submit_longevity_check": "Submitting longevity check...",
+        "check_hdl_status": "Checking HDL status...",
+        "get_lab_status": "Getting Lab status...",
+        "manage_agents": f"{fn_args.get('action', 'Managing').title()} agents...",
+        "manage_schedules": f"{fn_args.get('action', 'Managing').title()} schedules...",
+        "execute_skill": f"Executing skill: {fn_args.get('skill_name', '')}...",
+        "execute_strategy": "Executing strategy...",
+        "get_cost_summary": "Calculating costs...",
+        "manage_reports": f"{fn_args.get('action', 'Managing').title()} reports...",
+        "manage_knowledge": f"{fn_args.get('action', 'Managing').title()} knowledge...",
+        "manage_strategies": f"{fn_args.get('action', 'Managing').title()} strategies...",
+        "manage_notion_tasks": f"{fn_args.get('action', 'Managing').replace('_', ' ').title()} Notion tasks...",
+        "manage_skills": f"{fn_args.get('action', 'Managing').title()} skills...",
+        "add_correction": f"Adding correction for {fn_args.get('agent_name', 'agent')}...",
+        "rate_execution": f"Rating execution...",
+        "run_job_now": f"Running {fn_args.get('job_name', 'job')}...",
+    }
+    return descriptions.get(fn_name, f"Running {fn_name.replace('_', ' ')}...")
+
+
 SYSTEM_PROMPT = """You are The Lab's Master Chat — the AI command centre that orchestrates everything.
 
 ## Your Role
@@ -140,6 +169,11 @@ You CAN do all of these right now:
 - Always explain what you did and what happened.
 - Use British English. Be direct, no fluff.
 - Apply Hormozi's priority framework: (1) Revenue (2) Credibility/proof (3) Distribution (4) Product strength.
+
+## Attribution Rules
+- When you use agents via chat_with_agent or collaborate, mention which agents contributed at the end of your response.
+- Format: "**Agents used:** Scout, Quill, Radar"
+- When publishing to Notion, include the agents used in the report metadata via the agents_used parameter.
 
 ## Context
 {memory_context}
@@ -238,6 +272,7 @@ TOOLS = [
                     "content": {"type": "string", "description": "Report content (markdown)"},
                     "agent_name": {"type": "string", "description": "Which agent produced this"},
                     "report_type": {"type": "string", "enum": ["briefing", "content", "tech_report", "outreach", "weekly_review"], "description": "Type of report"},
+                    "agents_used": {"type": "array", "items": {"type": "string"}, "description": "List of agent names that contributed to this report"},
                 },
                 "required": ["title", "content", "agent_name"],
             },
@@ -749,6 +784,35 @@ class MasterChat:
         with open(path) as f:
             return json.load(f)
 
+    # --- Learning Helpers ---
+
+    async def _llm_func(self, prompt: str) -> str:
+        """Lightweight LLM call for memory extraction."""
+        try:
+            config = self.get_config()
+            client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL, timeout=30.0)
+            resp = client.chat.completions.create(
+                model=config.get("model_name", "gpt-5.4"),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+            )
+            return resp.choices[0].message.content or ""
+        except Exception as e:
+            logger.warning(f"LLM func for memory extraction failed: {e}")
+            return ""
+
+    async def _extract_learnings(self, user_msg: str, assistant_msg: str):
+        """Background task: extract memories from a Master Chat exchange."""
+        try:
+            await self.agent_memory_manager.extract_from_chat(
+                agent_id="master_chat",
+                user_msg=user_msg,
+                assistant_msg=assistant_msg,
+                llm_func=self._llm_func,
+            )
+        except Exception as e:
+            logger.warning(f"Master Chat learning extraction failed: {e}")
+
     # --- Tool Execution ---
 
     async def _execute_tool(self, tool_name: str, args: dict) -> str:
@@ -824,6 +888,7 @@ class MasterChat:
                     agent_name=args.get("agent_name", "Master Chat"),
                     report_type=args.get("report_type", "briefing"),
                     source="master_chat",
+                    agents_used=args.get("agents_used"),
                 )
                 if url:
                     return f"Published to Notion: {url}"
@@ -1365,6 +1430,12 @@ class MasterChat:
                         full_msg = f"[Collaboration Task: {task}]\n\n{instruction}"
                         self.agent_manager.update_status(agent.id, "working", f"Collaborating: {task[:40]}")
                         if self.ws_manager:
+                            await self.ws_manager.broadcast("master_chat_progress", {
+                                "stage": "agent_turn",
+                                "agent_name": agent.name,
+                                "description": f"{agent.name} is working on the task...",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            })
                             await self.ws_manager.broadcast("agent_status", {
                                 **agent.model_dump(mode="json"),
                                 "status": "working",
@@ -1385,6 +1456,12 @@ class MasterChat:
                     for name, response in parallel_results:
                         results.append({"agent": name, "response": response})
                         if self.ws_manager:
+                            await self.ws_manager.broadcast("master_chat_progress", {
+                                "stage": "agent_done",
+                                "agent_name": name,
+                                "description": f"{name} finished",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            })
                             await self.ws_manager.broadcast("agent_collaboration", {
                                 "action": "agent_responded",
                                 "collaboration_id": collaboration_id,
@@ -1403,6 +1480,14 @@ class MasterChat:
 
                         self.agent_manager.update_status(agent.id, "working", f"Collaborating: {task[:40]}")
                         if self.ws_manager:
+                            await self.ws_manager.broadcast("master_chat_progress", {
+                                "stage": "agent_turn",
+                                "agent_name": agent.name,
+                                "agent_index": i + 1,
+                                "total_agents": len(resolved),
+                                "description": f"{agent.name} is working ({i + 1}/{len(resolved)})...",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            })
                             await self.ws_manager.broadcast("agent_status", {
                                 **agent.model_dump(mode="json"),
                                 "status": "working",
@@ -1413,6 +1498,12 @@ class MasterChat:
 
                         self.agent_manager.update_status(agent.id, "idle", None)
                         if self.ws_manager:
+                            await self.ws_manager.broadcast("master_chat_progress", {
+                                "stage": "agent_done",
+                                "agent_name": agent.name,
+                                "description": f"{agent.name} finished",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            })
                             await self.ws_manager.broadcast("agent_status", {
                                 **agent.model_dump(mode="json"),
                                 "status": "idle", "current_task": None,
@@ -1558,8 +1649,8 @@ class MasterChat:
 
     # --- Main Chat ---
 
-    async def chat(self, user_message: str) -> str:
-        """Process a user message with function calling."""
+    async def chat(self, user_message: str, image_base64: str = None, image_mime: str = None) -> dict:
+        """Process a user message with function calling. Supports optional image for vision."""
         config = self.get_config()
         provider = config.get("provider", "openai")
         model = config.get("model_name", "gpt-5.4")
@@ -1590,6 +1681,14 @@ class MasterChat:
                 memory_context += "\n\n<recent_agent_learnings>\n" + "\n".join(cross_items[:10]) + "\n</recent_agent_learnings>"
         except Exception:
             pass
+        # Inject Master Chat's own past learnings
+        try:
+            mc_memories = self.agent_memory_manager.get_recent("master_chat", limit=5)
+            if mc_memories:
+                mc_text = "\n".join(f"- {m.content}" for m in mc_memories)
+                memory_context += f"\n\n<your_past_learnings>\n{mc_text}\n</your_past_learnings>"
+        except Exception:
+            pass
         system_prompt = SYSTEM_PROMPT.replace("{agent_list}", agent_list or "No agents configured yet.")
         system_prompt = system_prompt.replace("{memory_context}", memory_context or "No memory context available.")
 
@@ -1598,9 +1697,17 @@ class MasterChat:
         messages = [{"role": "system", "content": system_prompt}]
         for msg in history[-10:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
-        messages.append({"role": "user", "content": user_message})
+        # Build user message (text-only or vision format)
+        if image_base64 and image_mime:
+            user_content = [
+                {"type": "text", "text": user_message},
+                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_base64}"}}
+            ]
+        else:
+            user_content = user_message
+        messages.append({"role": "user", "content": user_content})
 
-        # Save user message
+        # Save user message (text only for history)
         self._save_message("user", user_message)
 
         # Call LLM
@@ -1640,8 +1747,22 @@ class MasterChat:
                     fn_name = tool_call.function.name
                     fn_args = json.loads(tool_call.function.arguments)
                     logger.info(f"Master Chat: executing {fn_name}({json.dumps(fn_args)[:200]})")
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("master_chat_progress", {
+                            "stage": "tool_start",
+                            "tool": fn_name,
+                            "description": _describe_tool_action(fn_name, fn_args),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
                     result = await self._execute_tool(fn_name, fn_args)
                     logger.info(f"Master Chat: {fn_name} result: {result[:200]}")
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("master_chat_progress", {
+                            "stage": "tool_complete",
+                            "tool": fn_name,
+                            "description": _describe_tool_action(fn_name, fn_args),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
                     tool_results.append({
                         "tool_call_id": tool_call.id,
                         "role": "tool",
@@ -1685,6 +1806,25 @@ class MasterChat:
             # Save assistant response
             self._save_message("assistant", final_text)
 
+            # Extract learnings in background (non-blocking)
+            if tools_used and self.agent_memory_manager:
+                import asyncio as _aio
+                _aio.create_task(self._extract_learnings(user_message, final_text))
+            # Extract image analysis as memory
+            if image_base64 and final_text and self.agent_memory_manager:
+                import asyncio as _aio
+                async def _save_image_memory():
+                    try:
+                        await self.agent_memory_manager.add(
+                            agent_id="master_chat",
+                            content=f"[Image Analysis] {final_text[:500]}",
+                            memory_type="fact",
+                            tags=["image", "visual_analysis"],
+                        )
+                    except Exception as e:
+                        logger.warning(f"Image memory extraction failed: {e}")
+                _aio.create_task(_save_image_memory())
+
             return {"response": final_text, "tools_used": tools_used}
 
         except Exception as e:
@@ -1692,8 +1832,8 @@ class MasterChat:
             self._save_message("assistant", error_msg)
             return {"response": error_msg, "tools_used": []}
 
-    async def chat_in_conversation(self, convo_id: str, user_message: str) -> dict:
-        """Process a message within a specific conversation. Returns {convo_id, response}."""
+    async def chat_in_conversation(self, convo_id: str, user_message: str, image_base64: str = None, image_mime: str = None) -> dict:
+        """Process a message within a specific conversation. Supports optional image for vision."""
         config = self.get_config()
         provider = config.get("provider", "openai")
         model = config.get("model_name", "gpt-5.4")
@@ -1724,6 +1864,14 @@ class MasterChat:
                 memory_context += "\n\n<recent_agent_learnings>\n" + "\n".join(cross_items[:10]) + "\n</recent_agent_learnings>"
         except Exception:
             pass
+        # Inject Master Chat's own past learnings
+        try:
+            mc_memories = self.agent_memory_manager.get_recent("master_chat", limit=5)
+            if mc_memories:
+                mc_text = "\n".join(f"- {m.content}" for m in mc_memories)
+                memory_context += f"\n\n<your_past_learnings>\n{mc_text}\n</your_past_learnings>"
+        except Exception:
+            pass
         system_prompt = SYSTEM_PROMPT.replace("{agent_list}", agent_list or "No agents configured yet.")
         system_prompt = system_prompt.replace("{memory_context}", memory_context or "No memory context available.")
 
@@ -1736,9 +1884,17 @@ class MasterChat:
         messages = [{"role": "system", "content": system_prompt}]
         for msg in convo.get("messages", [])[-10:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
-        messages.append({"role": "user", "content": user_message})
+        # Build user message (text-only or vision format)
+        if image_base64 and image_mime:
+            user_content = [
+                {"type": "text", "text": user_message},
+                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_base64}"}}
+            ]
+        else:
+            user_content = user_message
+        messages.append({"role": "user", "content": user_content})
 
-        # Save user message
+        # Save user message (text only for history)
         convo_id = self._save_message_to_convo(convo_id, "user", user_message)
 
         # Call LLM (same logic as chat() method)
@@ -1773,8 +1929,22 @@ class MasterChat:
                     fn_name = tool_call.function.name
                     fn_args = json.loads(tool_call.function.arguments)
                     logger.info(f"Master Chat: executing {fn_name}({json.dumps(fn_args)[:200]})")
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("master_chat_progress", {
+                            "stage": "tool_start",
+                            "tool": fn_name,
+                            "description": _describe_tool_action(fn_name, fn_args),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
                     result = await self._execute_tool(fn_name, fn_args)
                     logger.info(f"Master Chat: {fn_name} result: {result[:200]}")
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("master_chat_progress", {
+                            "stage": "tool_complete",
+                            "tool": fn_name,
+                            "description": _describe_tool_action(fn_name, fn_args),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
                     tool_results.append({
                         "tool_call_id": tool_call.id,
                         "role": "tool",
@@ -1814,6 +1984,26 @@ class MasterChat:
                     )
 
             self._save_message_to_convo(convo_id, "assistant", final_text)
+
+            # Extract learnings in background (non-blocking)
+            if tools_used and self.agent_memory_manager:
+                import asyncio as _aio
+                _aio.create_task(self._extract_learnings(user_message, final_text))
+            # Extract image analysis as memory
+            if image_base64 and final_text and self.agent_memory_manager:
+                import asyncio as _aio
+                async def _save_image_memory():
+                    try:
+                        await self.agent_memory_manager.add(
+                            agent_id="master_chat",
+                            content=f"[Image Analysis] {final_text[:500]}",
+                            memory_type="fact",
+                            tags=["image", "visual_analysis"],
+                        )
+                    except Exception as e:
+                        logger.warning(f"Image memory extraction failed: {e}")
+                _aio.create_task(_save_image_memory())
+
             return {"convo_id": convo_id, "response": final_text, "tools_used": tools_used}
 
         except Exception as e:

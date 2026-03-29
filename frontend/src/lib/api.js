@@ -435,6 +435,30 @@ export async function chatInConversation(convoId, message) {
   }
 }
 
+export async function sendMasterChatWithImage(message, imageFile, conversationId = null) {
+  const formData = new FormData()
+  formData.append('message', message || 'Analyse this image')
+  if (imageFile) formData.append('image', imageFile)
+  if (conversationId) formData.append('conversation_id', conversationId)
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 95000)
+  try {
+    const res = await fetch('/api/master-chat/with-image', {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    if (!res.ok) throw new Error(`API error: ${res.status}`)
+    return res.json()
+  } catch (err) {
+    clearTimeout(timer)
+    if (err.name === 'AbortError') return { response: 'Request timed out. Try a shorter prompt or break it into steps.', tools_used: [] }
+    throw err
+  }
+}
+
 export async function getSkills() {
   return api('/api/skills')
 }

@@ -5,7 +5,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Request, UploadFile, File, Form
 
 # Ensure INFO-level logging so Master Chat diagnostics are visible
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -1522,6 +1522,42 @@ async def chat_in_conversation(convo_id: str, data: MasterChatRequest):
         return result
     except asyncio.TimeoutError:
         return {"convo_id": convo_id, "response": "That request took too long (>90s). Try a simpler prompt.", "tools_used": []}
+
+
+@app.post("/api/master-chat/with-image")
+async def master_chat_with_image(
+    message: str = Form(...),
+    conversation_id: str = Form(None),
+    image: UploadFile = File(None),
+):
+    """Master Chat endpoint that supports optional image attachment for vision analysis."""
+    import base64
+    image_base64 = None
+    image_mime = None
+    if image:
+        allowed = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]
+        if image.content_type not in allowed:
+            raise HTTPException(400, f"Unsupported image type: {image.content_type}. Allowed: {allowed}")
+        image_bytes = await image.read()
+        if len(image_bytes) > 10 * 1024 * 1024:
+            raise HTTPException(400, "Image too large. Maximum 10MB.")
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        image_mime = image.content_type
+
+    try:
+        if conversation_id:
+            result = await asyncio.wait_for(
+                master_chat.chat_in_conversation(conversation_id, message, image_base64=image_base64, image_mime=image_mime),
+                timeout=90.0,
+            )
+        else:
+            result = await asyncio.wait_for(
+                master_chat.chat(message, image_base64=image_base64, image_mime=image_mime),
+                timeout=90.0,
+            )
+        return result
+    except asyncio.TimeoutError:
+        return {"response": "That request took too long (>90s). Try a simpler prompt.", "tools_used": []}
 
 
 # --- SKILLS ENDPOINTS ---

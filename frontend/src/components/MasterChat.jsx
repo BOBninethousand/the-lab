@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { FlaskConical, Send, X, Trash2, Loader2, Copy, Check, Wrench } from 'lucide-react'
-import { sendMasterChat, getMasterChatHistory, clearMasterChatHistory } from '../lib/api'
+import { FlaskConical, Send, X, Trash2, Loader2, Copy, Check, Wrench, Paperclip } from 'lucide-react'
+import { sendMasterChat, getMasterChatHistory, clearMasterChatHistory, sendMasterChatWithImage } from '../lib/api'
 import { parseUTC } from '../lib/time'
+import { useWebSocket } from '../hooks/useWebSocket'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -13,9 +14,15 @@ export function MasterChat() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [progressMessages, setProgressMessages] = useState([])
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
   const [copiedId, setCopiedId] = useState(null)
+  const { events } = useWebSocket()
+  const lastEventCountRef = useRef(0)
 
   useEffect(() => {
     if (isOpen) {
@@ -27,6 +34,23 @@ export function MasterChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Process WebSocket progress events during loading
+  useEffect(() => {
+    if (!isLoading) {
+      if (progressMessages.length > 0) setProgressMessages([])
+      lastEventCountRef.current = events.length
+      return
+    }
+    if (events.length > lastEventCountRef.current) {
+      const newEvents = events.slice(0, events.length - lastEventCountRef.current)
+      const progress = newEvents.filter(e => e.type === 'master_chat_progress').map(e => e.data)
+      if (progress.length > 0) {
+        setProgressMessages(prev => [...prev, ...progress.reverse()])
+        lastEventCountRef.current = events.length
+      }
+    }
+  }, [events, isLoading])
 
   // Auto-grow textarea
   useEffect(() => {
@@ -46,16 +70,55 @@ export function MasterChat() {
     } catch {}
   }
 
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) { alert('Image too large. Maximum 10MB.'); return }
+      setSelectedImage(file)
+      setImagePreview(URL.createObjectURL(file))
+    }
+  }
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items
+    if (items) {
+      for (let item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile()
+          setSelectedImage(file)
+          setImagePreview(URL.createObjectURL(file))
+          e.preventDefault()
+          break
+        }
+      }
+    }
+  }
+
+  const clearImage = () => {
+    setSelectedImage(null)
+    setImagePreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const handleSend = async () => {
     const msg = input.trim()
-    if (!msg || isLoading) return
+    if (!msg && !selectedImage) return
+    if (isLoading) return
 
+    const messageText = msg || 'Analyse this image'
+    const currentImagePreview = imagePreview
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: msg, timestamp: new Date().toISOString() }])
+    setMessages(prev => [...prev, { role: 'user', content: messageText, timestamp: new Date().toISOString(), image: currentImagePreview }])
     setIsLoading(true)
 
     try {
-      const data = await sendMasterChat(msg)
+      let data
+      if (selectedImage) {
+        data = await sendMasterChatWithImage(messageText, selectedImage)
+        clearImage()
+      } else {
+        data = await sendMasterChat(messageText)
+      }
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.response,
@@ -172,12 +235,25 @@ export function MasterChat() {
                   )}
                   {msg.role === 'assistant' ? (
                     <div className="prose-chat text-xs">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{
+                          a: ({ href, children, ...props }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+                          )
+                        }}
+                      >
                         {msg.content}
                       </ReactMarkdown>
                     </div>
                   ) : (
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <>
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                      {msg.image && (
+                        <img src={msg.image} alt="Upload" className="max-w-[200px] rounded-lg mt-1.5 border border-lab-border" />
+                      )}
+                    </>
                   )}
                   <div className="flex items-center justify-between mt-1">
                     {msg.timestamp && (
@@ -205,9 +281,31 @@ export function MasterChat() {
 
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-lab-elevated border border-lab-border rounded-lg px-3 py-2 flex items-center gap-2">
-                  <Loader2 size={12} className="text-lab-accent animate-spin" />
-                  <span className="text-[11px] text-lab-text-muted">Working...</span>
+                <div className="bg-lab-elevated border border-lab-border rounded-lg px-3 py-2 min-w-[160px]">
+                  {progressMessages.length === 0 ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 size={12} className="text-lab-accent animate-spin" />
+                      <span className="text-[11px] text-lab-text-muted">Working...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1.5">
+                      {progressMessages.map((msg, i) => (
+                        <div key={i} className="flex items-center gap-1.5 text-[11px] animate-fadeIn">
+                          {(msg.stage === 'tool_start' || msg.stage === 'agent_turn') ? (
+                            <>
+                              <span className="text-lab-accent animate-pulse">●</span>
+                              <span className="text-lab-text-secondary">{msg.description}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-lab-success">✓</span>
+                              <span className="text-lab-text-muted">{(msg.description || msg.tool || '').replace('...', '')} done</span>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -217,12 +315,38 @@ export function MasterChat() {
 
           {/* Input */}
           <div className="border-t border-lab-border px-3 py-3">
+            {imagePreview && (
+              <div className="relative inline-block mb-2">
+                <img src={imagePreview} alt="Preview" className="max-h-20 rounded-lg border border-lab-border" />
+                <button
+                  onClick={clearImage}
+                  className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] hover:bg-red-600"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            )}
             <div className="flex items-end gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1.5 text-lab-text-muted hover:text-lab-text-secondary rounded hover:bg-white/[0.04] transition-subtle flex-shrink-0"
+                title="Attach image"
+              >
+                <Paperclip size={13} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                className="hidden"
+                onChange={handleImageSelect}
+              />
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder="Ask The Lab anything..."
                 rows={1}
                 className="flex-1 bg-lab-elevated border border-lab-border rounded-lg px-3 py-2 text-xs text-lab-text-primary placeholder:text-lab-text-faint focus:outline-none focus:border-lab-accent resize-none max-h-[150px]"
@@ -230,7 +354,7 @@ export function MasterChat() {
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading}
+                disabled={(!input.trim() && !selectedImage) || isLoading}
                 className="p-2 rounded-lg bg-lab-accent text-white hover:bg-lab-accent/90 transition-subtle disabled:opacity-30 flex-shrink-0"
               >
                 <Send size={14} />

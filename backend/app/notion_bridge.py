@@ -49,12 +49,17 @@ class NotionBridge:
     def __init__(self):
         self.api_key = settings.NOTION_API_KEY
         self.database_id = settings.NOTION_DATABASE_ID
+        self.parent_page_id = settings.NOTION_PARENT_PAGE_ID or self.database_id
         self.configured = bool(self.api_key and self.database_id)
         self.last_sync = None
         self._cached_tasks: List[Dict[str, Any]] = []
         self._agent_dbs: Dict[str, str] = {}  # agent_name -> notion database_id
         self._agent_dbs_file = f"{settings.DATA_DIR}/notion_agent_dbs.json"
         self._load_agent_dbs()
+        # Pre-seed Master Chat to use the main database (avoids creating a new one)
+        if "Master Chat" not in self._agent_dbs and self.database_id:
+            self._agent_dbs["Master Chat"] = self.database_id
+            self._save_agent_dbs()
         # Publish stats (in-memory, resets on restart)
         self._publish_successes = 0
         self._publish_failures = 0
@@ -90,7 +95,7 @@ class NotionBridge:
                     f"{self.BASE_URL}/databases",
                     headers=self._headers(),
                     json={
-                        "parent": {"page_id": self.database_id},
+                        "parent": {"page_id": self.parent_page_id},
                         "icon": {"type": "emoji", "emoji": emoji},
                         "title": [{"type": "text", "text": {"content": db_title}}],
                         "properties": {
@@ -674,7 +679,7 @@ class NotionBridge:
                 "children": initial_blocks,
             }
         return {
-            "parent": {"page_id": self.database_id},
+            "parent": {"page_id": self.parent_page_id},
             "icon": {"type": "emoji", "emoji": page_emoji},
             "properties": {
                 "title": {"title": [{"text": {"content": dated_title}}]}
@@ -689,6 +694,7 @@ class NotionBridge:
         agent_name: str = "",
         report_type: str = "",
         source: str = "scheduled",
+        agents_used: list = None,
     ) -> Optional[str]:
         """Publish a report into the agent's Notion database. Returns the page URL or None."""
         if not self.configured:
@@ -721,6 +727,14 @@ class NotionBridge:
                 },
                 {"object": "block", "type": "divider", "divider": {}},
             ]
+            if agents_used:
+                header_blocks.insert(0, {
+                    "object": "block", "type": "callout",
+                    "callout": {
+                        "rich_text": [{"type": "text", "text": {"content": f"Agents: {', '.join(agents_used)}"}}],
+                        "icon": {"type": "emoji", "emoji": "👥"},
+                    }
+                })
 
             content_blocks = self._markdown_to_notion_blocks(content)
             all_blocks = header_blocks + content_blocks
@@ -753,6 +767,8 @@ class NotionBridge:
                     result = resp.json()
                     page_id = result["id"]
                     page_url = result.get("url", "")
+                    if not page_url:
+                        page_url = f"https://www.notion.so/{page_id.replace('-', '')}"
 
                     if overflow_blocks:
                         await self._append_blocks(page_id, overflow_blocks)
@@ -763,7 +779,7 @@ class NotionBridge:
                 else:
                     self._publish_failures += 1
                     self._last_publish_error = f"[{agent_name}] {resp.status_code}: {resp.text[:200]}"
-                    logger.error(f"Notion publish failed: {resp.status_code} {resp.text[:300]}")
+                    logger.error(f"Notion publish failed for '{resolved_name}' (db={db_id}): {resp.status_code} {resp.text[:500]}")
                     return None
         except Exception as e:
             self._publish_failures += 1

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { FlaskConical, Send, Loader2, Copy, Check, Plus, Trash2, Pencil, MessageSquare, Sparkles, Bot, CalendarDays, BookOpen, X, Wrench } from 'lucide-react'
+import { FlaskConical, Send, Loader2, Copy, Check, Plus, Trash2, Pencil, MessageSquare, Sparkles, Bot, CalendarDays, BookOpen, X, Wrench, Paperclip } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
-import { listConversations, createConversation, getConversation, deleteConversation, renameConversation, chatInConversation } from '../lib/api'
+import { listConversations, createConversation, getConversation, deleteConversation, renameConversation, chatInConversation, sendMasterChatWithImage } from '../lib/api'
 import { parseUTC } from '../lib/time'
+import { useWebSocket } from '../hooks/useWebSocket'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -24,9 +25,16 @@ export function MasterChatPage() {
   const [editingId, setEditingId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [progressMessages, setProgressMessages] = useState([])
+  const [selectedImage, setSelectedImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [isDragging, setIsDragging] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const { events } = useWebSocket()
+  const lastEventCountRef = useRef(0)
 
   // Load conversation list on mount
   useEffect(() => {
@@ -38,6 +46,23 @@ export function MasterChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Process WebSocket progress events during loading
+  useEffect(() => {
+    if (!isLoading) {
+      if (progressMessages.length > 0) setProgressMessages([])
+      lastEventCountRef.current = events.length
+      return
+    }
+    if (events.length > lastEventCountRef.current) {
+      const newEvents = events.slice(0, events.length - lastEventCountRef.current)
+      const progress = newEvents.filter(e => e.type === 'master_chat_progress').map(e => e.data)
+      if (progress.length > 0) {
+        setProgressMessages(prev => [...prev, ...progress.reverse()])
+        lastEventCountRef.current = events.length
+      }
+    }
+  }, [events, isLoading])
+
   // Auto-grow textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -45,6 +70,51 @@ export function MasterChatPage() {
       textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
     }
   }, [input])
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) { alert('Image too large. Maximum 10MB.'); return }
+      setSelectedImage(file)
+      setImagePreview(URL.createObjectURL(file))
+    }
+  }
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items
+    if (items) {
+      for (let item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile()
+          setSelectedImage(file)
+          setImagePreview(URL.createObjectURL(file))
+          e.preventDefault()
+          break
+        }
+      }
+    }
+  }
+
+  const clearImage = () => {
+    setSelectedImage(null)
+    setImagePreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true) }
+  const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false) }
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation(); setIsDragging(false)
+    const files = e.dataTransfer?.files
+    if (files && files.length > 0) {
+      const file = files[0]
+      if (file.type.startsWith('image/')) {
+        if (file.size > 10 * 1024 * 1024) { alert('Image too large. Maximum 10MB.'); return }
+        setSelectedImage(file)
+        setImagePreview(URL.createObjectURL(file))
+      }
+    }
+  }
 
   const loadConversations = async () => {
     try {
@@ -102,7 +172,8 @@ export function MasterChatPage() {
 
   const handleSend = async () => {
     const msg = input.trim()
-    if (!msg || isLoading) return
+    if (!msg && !selectedImage) return
+    if (isLoading) return
 
     // Create a conversation if none active
     let convoId = activeConvoId
@@ -117,17 +188,25 @@ export function MasterChatPage() {
       }
     }
 
+    const messageText = msg || 'Analyse this image'
+    const currentImagePreview = imagePreview
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: msg, timestamp: new Date().toISOString() }])
+    setMessages(prev => [...prev, { role: 'user', content: messageText, timestamp: new Date().toISOString(), image: currentImagePreview }])
     setIsLoading(true)
 
     try {
-      const data = await chatInConversation(convoId, msg)
+      let data
+      if (selectedImage) {
+        data = await sendMasterChatWithImage(messageText, selectedImage, convoId)
+        clearImage()
+      } else {
+        data = await chatInConversation(convoId, messageText)
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: data.response, timestamp: new Date().toISOString(), tools_used: data.tools_used || [] }])
       // Update sidebar title if first message
       setConversations(prev => prev.map(c =>
         c.id === convoId
-          ? { ...c, title: c.title === 'New Chat' ? msg.slice(0, 60) : c.title, message_count: (c.message_count || 0) + 2, updated_at: new Date().toISOString() }
+          ? { ...c, title: c.title === 'New Chat' ? messageText.slice(0, 60) : c.title, message_count: (c.message_count || 0) + 2, updated_at: new Date().toISOString() }
           : c
       ))
     } catch (err) {
@@ -251,7 +330,20 @@ export function MasterChatPage() {
       )}
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-lab-bg min-w-0">
+      <div
+        className={`flex-1 flex flex-col bg-lab-bg min-w-0 relative ${isDragging ? 'ring-2 ring-lab-accent ring-opacity-50' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDragging && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-lab-bg/80 pointer-events-none">
+            <div className="text-center">
+              <Paperclip size={32} className="mx-auto text-lab-accent mb-2" />
+              <p className="text-lab-text-primary text-lg">Drop image here</p>
+            </div>
+          </div>
+        )}
         {/* Toggle sidebar (mobile) */}
         <div className="lg:hidden flex items-center px-4 py-2 border-b border-lab-border">
           <button onClick={() => setSidebarOpen(p => !p)} className="text-lab-text-muted hover:text-lab-text-secondary">
@@ -322,12 +414,25 @@ export function MasterChatPage() {
                   )}
                   {msg.role === 'assistant' ? (
                     <div className="prose-chat">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{
+                          a: ({ href, children, ...props }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>
+                          )
+                        }}
+                      >
                         {msg.content}
                       </ReactMarkdown>
                     </div>
                   ) : (
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <>
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                      {msg.image && (
+                        <img src={msg.image} alt="Upload" className="max-w-sm rounded-lg mt-2 border border-lab-border" />
+                      )}
+                    </>
                   )}
 
                   {/* Footer: timestamp + copy */}
@@ -356,12 +461,34 @@ export function MasterChatPage() {
               </div>
             ))}
 
-            {/* Loading */}
+            {/* Loading with progress indicators */}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-lab-elevated border border-lab-border rounded-xl px-5 py-3 flex items-center gap-2.5">
-                  <Loader2 size={14} className="text-lab-accent animate-spin" />
-                  <span className="text-sm text-lab-text-muted">Thinking...</span>
+                <div className="bg-lab-elevated border border-lab-border rounded-xl px-5 py-3 min-w-[200px]">
+                  {progressMessages.length === 0 ? (
+                    <div className="flex items-center gap-2.5">
+                      <Loader2 size={14} className="text-lab-accent animate-spin" />
+                      <span className="text-sm text-lab-text-muted">Thinking...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {progressMessages.map((msg, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm animate-fadeIn">
+                          {(msg.stage === 'tool_start' || msg.stage === 'agent_turn') ? (
+                            <>
+                              <span className="text-lab-accent animate-pulse">●</span>
+                              <span className="text-lab-text-secondary">{msg.description}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-lab-success">✓</span>
+                              <span className="text-lab-text-muted">{(msg.description || msg.tool || '').replace('...', '')} done</span>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -373,20 +500,47 @@ export function MasterChatPage() {
         {/* Input Area */}
         <div className="border-t border-lab-border px-6 py-4 bg-lab-bg">
           <div className="max-w-[760px] mx-auto">
+            {/* Image preview */}
+            {imagePreview && (
+              <div className="relative inline-block mb-2">
+                <img src={imagePreview} alt="Upload preview" className="max-h-32 rounded-lg border border-lab-border" />
+                <button
+                  onClick={clearImage}
+                  className="absolute -top-2 -right-2 bg-lab-error text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
             <div className="flex items-end gap-3 bg-lab-elevated border border-lab-border rounded-xl px-4 py-3 focus-within:border-lab-accent/40 transition-subtle">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1.5 text-lab-text-muted hover:text-lab-text-secondary rounded-lg hover:bg-white/[0.04] transition-subtle flex-shrink-0"
+                title="Attach image (or paste with Cmd+V)"
+              >
+                <Paperclip size={16} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                className="hidden"
+                onChange={handleImageSelect}
+              />
               <textarea
                 ref={el => { textareaRef.current = el; inputRef.current = el }}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Message Master Chat..."
+                onPaste={handlePaste}
+                placeholder="Message Master Chat... (paste images with Cmd+V)"
                 rows={1}
                 className="flex-1 bg-transparent text-sm text-lab-text-primary placeholder:text-lab-text-faint focus:outline-none resize-none leading-relaxed"
                 style={{ minHeight: '24px', maxHeight: '200px' }}
               />
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || isLoading}
+                disabled={(!input.trim() && !selectedImage) || isLoading}
                 className="p-2 rounded-lg bg-lab-accent text-white hover:bg-lab-accent/90 transition-subtle disabled:opacity-30 flex-shrink-0"
               >
                 <Send size={16} />
