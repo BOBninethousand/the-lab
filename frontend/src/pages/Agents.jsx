@@ -303,39 +303,39 @@ export function Agents() {
               return (
                 <div key={i} className="card border-lab-border overflow-hidden relative">
                   {/* Shimmer sweep */}
-                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_ease-in-out_infinite] pointer-events-none"
-                    style={{ animationDelay: `${i * 200}ms`, background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%)' }} />
+                  <div className="absolute inset-0 pointer-events-none"
+                    style={{ animationDelay: `${i * 200}ms`, background: `linear-gradient(90deg, transparent 0%, ${c}08 50%, transparent 100%)`, animation: 'shimmer 1.8s ease-in-out infinite' }} />
                   <div className="flex items-start gap-3 mb-3">
-                    {/* Mini character face with glow pulse */}
-                    <div className="animate-pulse-subtle" style={{
+                    {/* Mini character face */}
+                    <div className="animate-pulse" style={{
                       width: 40, height: 40, minWidth: 40, borderRadius: 10,
                       background: `linear-gradient(135deg, ${c}ee 0%, ${c} 100%)`,
-                      boxShadow: `0 0 12px ${c}50`,
+                      boxShadow: `0 0 14px ${c}60`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.7)' }} />
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.7)' }} />
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.85)' }} />
+                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.85)' }} />
                       </div>
                     </div>
                     <div className="flex-1 space-y-2 pt-1">
-                      <div className="h-3 w-20 bg-white/[0.06] rounded animate-pulse" style={{ animationDelay: `${i * 150}ms` }} />
-                      <div className="h-2 w-32 bg-white/[0.04] rounded animate-pulse" style={{ animationDelay: `${i * 150 + 100}ms` }} />
+                      <div className="h-3 w-20 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.12)', animationDelay: `${i * 150}ms` }} />
+                      <div className="h-2 w-32 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.07)', animationDelay: `${i * 150 + 100}ms` }} />
                     </div>
                   </div>
-                  <div className="h-2 w-3/4 bg-white/[0.03] rounded mb-1 animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
-                  <div className="h-2 w-1/2 bg-white/[0.03] rounded mb-4 animate-pulse" style={{ animationDelay: `${i * 100 + 80}ms` }} />
+                  <div className="h-2 w-3/4 rounded mb-1 animate-pulse" style={{ background: 'rgba(255,255,255,0.06)', animationDelay: `${i * 100}ms` }} />
+                  <div className="h-2 w-1/2 rounded mb-4 animate-pulse" style={{ background: 'rgba(255,255,255,0.06)', animationDelay: `${i * 100 + 80}ms` }} />
                   <div className="grid grid-cols-3 gap-2 mb-3">
                     {[0,1,2].map(j => (
                       <div key={j} className="bg-lab-bg rounded px-2 py-1.5 text-center">
-                        <div className="h-3 w-4 mx-auto bg-white/[0.06] rounded mb-1 animate-pulse" style={{ animationDelay: `${i * 100 + j * 120}ms` }} />
-                        <div className="h-1.5 w-10 mx-auto bg-white/[0.03] rounded animate-pulse" />
+                        <div className="h-3 w-4 mx-auto rounded mb-1 animate-pulse" style={{ background: 'rgba(255,255,255,0.1)', animationDelay: `${i * 100 + j * 120}ms` }} />
+                        <div className="h-1.5 w-10 mx-auto rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />
                       </div>
                     ))}
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-lab-border/50">
-                    <div className="h-2 w-14 bg-white/[0.04] rounded animate-pulse" />
-                    <div className="h-2 w-24 bg-white/[0.03] rounded animate-pulse" />
+                    <div className="h-2 w-14 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    <div className="h-2 w-24 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.06)' }} />
                   </div>
                 </div>
               )
