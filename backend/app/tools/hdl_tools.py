@@ -50,7 +50,7 @@ def _headers() -> dict:
 
 
 def _validated_response(response) -> dict:
-    """Ensure response.json() returns a dict; wrap non-dict values."""
+    """Ensure response.json() returns a dict; wrap non-dict values (e.g. bare int from WP API)."""
     data = response.json()
     if isinstance(data, dict):
         return data
