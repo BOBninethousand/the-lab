@@ -1624,14 +1624,38 @@ class MasterChat:
                 result = check_user_status(persona["email"])
                 if not isinstance(result, dict):
                     return f"HDL status for {persona['name']}: unexpected API response (got {type(result).__name__}: {result})"
-                credits = result.get("credits", {})
-                usage = result.get("daily_usage", {})
+
+                # Safe nested field extraction — WP API returns credits/daily_usage
+                # as plain ints (e.g. 597) instead of {"health": X, "longevity": Y}
+                raw_credits = result.get("credits", {})
+                raw_usage = result.get("daily_usage", {})
+
+                if isinstance(raw_credits, dict):
+                    credit_health = raw_credits.get("health", "?")
+                    credit_longevity = raw_credits.get("longevity", "?")
+                else:
+                    credit_health = raw_credits
+                    credit_longevity = "n/a (total shown)"
+
+                if isinstance(raw_usage, dict):
+                    usage_health = raw_usage.get("health", 0)
+                    usage_longevity = raw_usage.get("longevity", 0)
+                else:
+                    usage_health = raw_usage
+                    usage_longevity = "n/a"
+
+                roles = result.get("roles", [])
+                if isinstance(roles, str):
+                    roles = [roles]
+                elif not isinstance(roles, list):
+                    roles = [str(roles)]
+
                 summary = (
                     f"HDL status for {persona['name']} ({persona['email']}):\n"
                     f"  User ID: {result.get('user_id', 'n/a')}\n"
-                    f"  Roles: {', '.join(result.get('roles', []))}\n"
-                    f"  Credits — health: {credits.get('health', '?')}, longevity: {credits.get('longevity', '?')}\n"
-                    f"  Daily usage — health: {usage.get('health', 0)}, longevity: {usage.get('longevity', 0)}"
+                    f"  Roles: {', '.join(roles)}\n"
+                    f"  Credits — health: {credit_health}, longevity: {credit_longevity}\n"
+                    f"  Daily usage — health: {usage_health}, longevity: {usage_longevity}"
                 )
                 if self.ws_manager:
                     await self.ws_manager.broadcast("tool_executed", {
@@ -1648,7 +1672,9 @@ class MasterChat:
                 result = reset_credits(practitioner_email, amount, "master_chat")
                 if not isinstance(result, dict):
                     return f"Credit reset: unexpected API response: {result}"
-                summary = f"Credits reset: added {amount} to practitioner pool. New balances: {json.dumps(result.get('credits', result))}"
+                raw_credits = result.get("credits", result)
+                credit_str = json.dumps(raw_credits) if isinstance(raw_credits, dict) else str(raw_credits)
+                summary = f"Credits reset: added {amount} to practitioner pool. New balances: {credit_str}"
                 if self.ws_manager:
                     await self.ws_manager.broadcast("tool_executed", {
                         "tool_name": "reset_hdl_credits",

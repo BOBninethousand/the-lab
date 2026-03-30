@@ -50,15 +50,27 @@ def _headers() -> dict:
 
 
 def _validated_response(response) -> dict:
-    """Ensure response.json() returns a dict; wrap non-dict values (e.g. bare int from WP API)."""
+    """Ensure response.json() returns a dict with safe nested types.
+
+    The HDL WordPress API sometimes returns:
+    - Bare ints from response.json() (e.g. just a submission ID)
+    - Nested fields as ints instead of dicts (e.g. credits: 597 instead of {health: X, longevity: Y})
+    """
     data = response.json()
-    if isinstance(data, dict):
-        return data
-    return {
-        "success": False,
-        "error": f"Unexpected API response type: {type(data).__name__}",
-        "raw_response": data,
-    }
+    if not isinstance(data, dict):
+        return {
+            "success": False,
+            "error": f"Unexpected API response type: {type(data).__name__}",
+            "raw_response": data,
+        }
+
+    # Normalise known nested fields that the WP API sometimes returns as ints
+    for field in ("credits", "daily_usage"):
+        val = data.get(field)
+        if val is not None and not isinstance(val, dict):
+            data[field] = {"total": val}
+
+    return data
 
 
 def submit_health_assessment(email: str, form_data: dict, agent_name: str = "unknown") -> dict:
