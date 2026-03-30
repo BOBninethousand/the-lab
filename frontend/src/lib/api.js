@@ -338,6 +338,22 @@ export async function getStrategyProgress(id) {
   return api(`/api/strategies/${id}/progress`)
 }
 
+export async function executeStrategy(id) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 95000)
+  try {
+    const result = await api(`/api/strategies/${id}/execute`, {
+      method: 'POST',
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+    return result
+  } catch (err) {
+    clearTimeout(timer)
+    throw err
+  }
+}
+
 // Value Metrics
 export async function getValueMetrics() {
   return api('/api/dashboard/value-metrics')

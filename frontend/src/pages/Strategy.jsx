@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -12,6 +12,7 @@ import {
   updateStrategy,
   deleteStrategy,
   getStrategyProgress,
+  executeStrategy,
   getAgents,
   getSchedule,
   getReport,
@@ -73,12 +74,15 @@ export function Strategy() {
     tags: [],
   })
 
+  const [executingId, setExecutingId] = useState(null)
   const [agentStatuses, setAgentStatuses] = useState({})
   const [viewingReport, setViewingReport] = useState(null)
   const [loadingReport, setLoadingReport] = useState(false)
 
   const navigate = useNavigate()
   const { events } = useWebSocket()
+  const expandedIdRef = useRef(null)
+  useEffect(() => { expandedIdRef.current = expandedId }, [expandedId])
 
   // Track agent running/idle status via WebSocket
   useEffect(() => {
@@ -89,12 +93,21 @@ export function Strategy() {
       }
       if (e.type === 'strategy_changed') {
         getStrategies().catch(() => []).then(d => setStrategies(Array.isArray(d) ? d : []))
+        if (expandedIdRef.current) {
+          getStrategyProgress(expandedIdRef.current)
+            .then(p => setProgress(prev => ({ ...prev, [expandedIdRef.current]: p })))
+            .catch(() => {})
+        }
+      } else if (e.type === 'report_created' && expandedIdRef.current) {
+        getStrategyProgress(expandedIdRef.current)
+          .then(p => setProgress(prev => ({ ...prev, [expandedIdRef.current]: p })))
+          .catch(() => {})
       } else if (e.type === 'agent_created' && e.data) {
         setAgents(prev => prev.some(a => a.id === e.data.id) ? prev : [...prev, e.data])
       } else if (e.type === 'agent_deleted' && e.data?.id) {
         setAgents(prev => prev.filter(a => a.id !== e.data.id))
       } else if (e.type === 'schedule_changed') {
-        getSchedule().catch(() => []).then(d => setSchedule(Array.isArray(d) ? d : []))
+        getSchedule().catch(() => []).then(d => setSchedules(Array.isArray(d) ? d : []))
       }
     }
   }, [events])
@@ -106,6 +119,15 @@ export function Strategy() {
       setViewingReport(report)
     } catch { showError('Failed to load report') }
     finally { setLoadingReport(false) }
+  }
+
+  const handleExecute = async (strategy) => {
+    if (executingId) return
+    setExecutingId(strategy.id)
+    try {
+      await executeStrategy(strategy.id)
+    } catch { showError('Strategy execution failed') }
+    finally { setExecutingId(null) }
   }
 
   const timeAgo = (isoStr) => {
@@ -126,7 +148,7 @@ export function Strategy() {
     const within48h = lastExecMs < 48 * 60 * 60 * 1000
     const within7d = lastExecMs < 7 * 24 * 60 * 60 * 1000
     if (prog.success_rate_7d >= 80 && within48h) return 'bg-emerald-500'
-    if (prog.success_rate_7d >= 50 || within7d) return 'bg-amber-500'
+    if (prog.success_rate_7d >= 50 && within7d) return 'bg-amber-500'
     return 'bg-red-500'
   }
 
@@ -669,8 +691,28 @@ export function Strategy() {
                         )}
                       </div>
 
+                      {/* Empty state guidance */}
+                      {prog && prog.reports_count === 0 && prog.executions_total === 0 && (
+                        <div className="py-4 text-center space-y-1">
+                          <p className="text-xs text-lab-text-muted">No activity yet for this strategy.</p>
+                          <p className="text-[11px] text-lab-text-faint">
+                            Click Run Now to execute, or link schedules in Calendar for automatic runs.
+                          </p>
+                        </div>
+                      )}
+
                       {/* Actions */}
                       <div className="flex items-center gap-2 pt-2 border-t border-lab-border">
+                        <button
+                          onClick={() => handleExecute(strategy)}
+                          disabled={executingId === strategy.id || strategy.status !== 'active'}
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-lab-accent hover:bg-lab-accent/10 transition-subtle disabled:opacity-40"
+                        >
+                          {executingId === strategy.id
+                            ? <><Zap size={12} className="animate-spin" /> Running...</>
+                            : <><Zap size={12} /> Run Now</>
+                          }
+                        </button>
                         <button
                           onClick={() => handleStatusToggle(strategy)}
                           className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md text-lab-text-secondary hover:bg-white/[0.03] transition-subtle"

@@ -1544,11 +1544,43 @@ class MasterChat:
                         })
 
                 # Delegate to collaborate tool
-                return await self._execute_tool("collaborate", {
+                result = await self._execute_tool("collaborate", {
                     "task": f"Strategy: {strategy['title']} — {args['task']}",
                     "agents": agent_specs,
                     "mode": "sequential",
                 })
+
+                # Save execution result as a report
+                try:
+                    from app.models import ReportCreate
+                    primary_agent = self._resolve_agent_by_id(agent_ids[0])
+                    report_data = ReportCreate(
+                        title=f"Strategy Execution: {strategy['title']}",
+                        content=result,
+                        report_type="strategy_execution",
+                        agent_id=agent_ids[0],
+                        agent_name=primary_agent.name if primary_agent else "Unknown",
+                        source="strategy",
+                    )
+                    report = self.report_manager.create_report(report_data)
+                    if self.ws_manager:
+                        await self.ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+                        await self.ws_manager.broadcast("strategy_changed", {"action": "executed", "strategy_id": args["strategy_id"]})
+                    if self.notion_bridge and self.notion_bridge.configured:
+                        try:
+                            url = await self.notion_bridge.publish_report(
+                                title=report.title, content=report.content,
+                                agent_name=report.agent_name, report_type=report.report_type,
+                                source=report.source,
+                            )
+                            if url:
+                                self.report_manager.update_report(report.id, {"notion_page_url": url})
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.warning(f"Failed to save strategy execution report: {e}")
+
+                return result
 
             # --- HDL Integration ---
 
