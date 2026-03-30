@@ -56,10 +56,16 @@ class NotionBridge:
         self._agent_dbs: Dict[str, str] = {}  # agent_name -> notion database_id
         self._agent_dbs_file = f"{settings.DATA_DIR}/notion_agent_dbs.json"
         self._load_agent_dbs()
-        # Pre-seed Master Chat to use the main database (avoids creating a new one)
-        if "Master Chat" not in self._agent_dbs and self.database_id:
-            self._agent_dbs["Master Chat"] = self.database_id
+        # Pre-seed Master Chat with its actual Notion database
+        MASTER_CHAT_DB = "33142a21e9ae8192b55ecf81cd4da161"
+        if "Master Chat" not in self._agent_dbs:
+            self._agent_dbs["Master Chat"] = MASTER_CHAT_DB
             self._save_agent_dbs()
+        # Force-correct if cached mapping points to the parent page instead of the database
+        elif self._agent_dbs.get("Master Chat") == self.database_id and self.database_id != MASTER_CHAT_DB:
+            self._agent_dbs["Master Chat"] = MASTER_CHAT_DB
+            self._save_agent_dbs()
+            logger.info("Corrected Master Chat Notion database mapping")
         # Publish stats (in-memory, resets on restart)
         self._publish_successes = 0
         self._publish_failures = 0
