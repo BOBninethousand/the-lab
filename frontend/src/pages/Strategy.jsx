@@ -205,7 +205,20 @@ export function Strategy() {
 
   useEffect(() => { loadData() }, [])
 
-  // Load progress when a strategy is expanded
+  // Pre-load progress for ALL strategies on mount
+  useEffect(() => {
+    async function loadAllProgress() {
+      for (const strat of strategies) {
+        try {
+          const p = await getStrategyProgress(strat.id)
+          setProgress(prev => ({ ...prev, [strat.id]: p }))
+        } catch { }
+      }
+    }
+    if (strategies.length > 0) loadAllProgress()
+  }, [strategies])
+
+  // Refresh progress when a strategy is expanded
   useEffect(() => {
     if (expandedId) {
       getStrategyProgress(expandedId)
@@ -292,18 +305,22 @@ export function Strategy() {
   }
 
   const activeCount = strategies.filter(s => s.status === 'active').length
-  const totalAgentsLinked = new Set(strategies.flatMap(s => s.agent_ids || [])).size
-  // Use auto-detected schedule counts from progress data when available
-  const totalSchedulesLinked = Object.values(progress).reduce((sum, p) => sum + (p.schedule_count || 0), 0)
+  const totalReports = Object.values(progress).reduce((sum, p) => sum + (p.reports_count || 0), 0)
+  const reportsThisWeek = Object.values(progress).reduce((sum, p) => sum + (p.reports_this_week || 0), 0)
+  const avgSuccessRate = (() => {
+    const progs = Object.values(progress).filter(p => p.success_rate_7d !== null && p.success_rate_7d !== undefined)
+    if (progs.length === 0) return '\u2014'
+    return Math.round(progs.reduce((s, p) => s + p.success_rate_7d, 0) / progs.length) + '%'
+  })()
 
   return (
     <div className="space-y-8">
       {/* Header stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Strategies" value={strategies.length} isLoading={isLoading} />
-        <StatCard label="Active" value={activeCount} isLoading={isLoading} />
-        <StatCard label="Agents Linked" value={totalAgentsLinked} isLoading={isLoading} />
-        <StatCard label="Schedules Linked" value={totalSchedulesLinked} isLoading={isLoading} />
+        <StatCard label="Active Strategies" value={activeCount} isLoading={isLoading} />
+        <StatCard label="Total Reports" value={totalReports} isLoading={isLoading} />
+        <StatCard label="This Week" value={reportsThisWeek} isLoading={isLoading} />
+        <StatCard label="Success Rate" value={avgSuccessRate} isLoading={isLoading} />
       </div>
 
       {/* Error toast */}
@@ -503,6 +520,8 @@ export function Strategy() {
                   <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${STATUS_COLOURS[strategy.status] || STATUS_COLOURS.active}`}>
                     {STATUS_LABELS[strategy.status] || 'Active'}
                   </span>
+                  {/* Health dot */}
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${getHealthColour(prog)}`} />
                 </button>
 
                 {/* Expanded content */}
@@ -681,6 +700,30 @@ export function Strategy() {
                                 >
                                   <Eye size={10} /> View
                                 </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Agent Intelligence — what agents have learned */}
+                      {prog?.agent_learnings?.length > 0 && (
+                        <div>
+                          <div className="text-[10px] font-medium uppercase tracking-wider text-lab-text-muted mb-2">
+                            Agent Intelligence
+                          </div>
+                          <div className="space-y-1.5">
+                            {prog.agent_learnings.map((learning, i) => (
+                              <div key={i} className="flex items-start gap-2 p-2 rounded-md bg-lab-elevated/50 border border-lab-border/50">
+                                <AvatarCircle name={learning.agent_name} agent={learning.agent_name} size={16} />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] text-lab-text-secondary leading-relaxed">{learning.content}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[10px] text-lab-text-muted">{learning.agent_name}</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] bg-white/[0.04] text-lab-text-faint">{learning.type}</span>
+                                    <span className="text-[10px] text-lab-text-faint">{timeAgo(learning.created_at)}</span>
+                                  </div>
+                                </div>
                               </div>
                             ))}
                           </div>

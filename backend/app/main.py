@@ -92,6 +92,7 @@ scheduler_manager.notion_bridge = notion_bridge
 
 # Strategy manager
 strategy_manager = StrategyManager()
+scheduler_manager.strategy_manager = strategy_manager
 
 # Skill manager
 skill_manager = SkillManager()
@@ -736,6 +737,31 @@ async def _publish_report_to_notion(report):
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Notion auto-publish failed: {e}")
+
+
+def _extract_agent_section(result: str, agent_name: str) -> str:
+    """Extract a specific agent's contribution from a collaboration result."""
+    import re
+    pattern = rf'\*\*{re.escape(agent_name)}:\*\*\n(.*?)(?=\n---|\n\*\*[A-Z]|\Z)'
+    match = re.search(pattern, result, re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+async def _share_strategy_results(agent_ids, strategy_title, result_summary):
+    """Share strategy outcome with all participating agents."""
+    try:
+        for aid in agent_ids:
+            agent = agent_manager.get_agent(aid)
+            if agent:
+                summary = f"Strategy '{strategy_title}' executed. Key outcome: {result_summary[:300]}"
+                await agent_memory_manager.add(
+                    aid,
+                    summary,
+                    memory_type="fact",
+                    tags=["strategy_execution", "team_update"],
+                )
+    except Exception:
+        pass
 
 
 async def _extract_report_learnings(report):
@@ -1666,22 +1692,45 @@ async def execute_strategy_endpoint(strategy_id: str):
                 "title": strategy["title"],
                 "agent_names": [s["agent_name"] for s in agent_specs],
             })
+            # Smart mode: use sequential if approach implies dependencies
+            approach = strategy.get("approach", "").lower()
+            sequential_signals = ["then", "based on", "after", "followed by", "using the", "hand off"]
+            mode = "sequential" if any(s in approach for s in sequential_signals) else "parallel"
+
             result = await master_chat._execute_tool("collaborate", {
                 "task": f"Strategy: {strategy['title']}",
                 "agents": agent_specs,
-                "mode": "parallel",
+                "mode": mode,
             })
-            # Save result as a report
-            primary_agent = agent_manager.get_agent(agent_ids[0])
+            # Save combined report with all agent names
+            all_agent_names = [s["agent_name"] for s in agent_specs]
             report = report_manager.create_report(ReportCreate(
                 title=f"Strategy Execution: {strategy['title']}",
                 content=result,
                 report_type="strategy_execution",
                 agent_id=agent_ids[0],
-                agent_name=primary_agent.name if primary_agent else "Unknown",
+                agent_name=", ".join(all_agent_names),
                 source="strategy",
             ))
             await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+
+            # Save individual per-agent reports for searchability
+            for spec in agent_specs:
+                agent = agent_manager.get_agent_by_name(spec["agent_name"])
+                if agent:
+                    agent_section = _extract_agent_section(result, spec["agent_name"])
+                    if agent_section and len(agent_section.strip()) > 20:
+                        individual_report = report_manager.create_report(ReportCreate(
+                            title=f"{spec['agent_name']}: {strategy['title']}",
+                            content=agent_section,
+                            report_type="strategy_execution",
+                            agent_id=agent.id,
+                            agent_name=spec["agent_name"],
+                            source="strategy",
+                        ))
+                        await ws_manager.broadcast("report_created", individual_report.model_dump(mode="json"))
+                        asyncio.create_task(_extract_report_learnings(individual_report))
+
             await ws_manager.broadcast("strategy_executed", {
                 "strategy_id": strategy_id,
                 "report_id": report.id,
@@ -1692,6 +1741,7 @@ async def execute_strategy_endpoint(strategy_id: str):
             if notion_bridge.configured:
                 asyncio.create_task(_publish_report_to_notion(report))
             asyncio.create_task(_extract_report_learnings(report))
+            asyncio.create_task(_share_strategy_results(agent_ids, strategy["title"], result[:500]))
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Strategy execution failed: {e}")
@@ -1709,7 +1759,8 @@ async def execute_strategy_endpoint(strategy_id: str):
 @app.get("/api/strategies/{strategy_id}/progress")
 async def get_strategy_progress(strategy_id: str):
     progress = strategy_manager.get_progress(
-        strategy_id, report_manager, scheduler_manager, cost_tracker
+        strategy_id, report_manager, scheduler_manager, cost_tracker,
+        agent_memory_manager=agent_memory_manager, agent_manager=agent_manager,
     )
     if not progress:
         raise HTTPException(status_code=404, detail="Strategy not found")

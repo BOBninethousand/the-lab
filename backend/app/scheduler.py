@@ -165,6 +165,7 @@ class SchedulerManager:
         self.notion_bridge = None  # Set from main.py after init
         self.knowledge_manager = None  # Set from main.py after init
         self.agent_memory_manager = None  # Set from main.py after init
+        self.strategy_manager = None  # Set from main.py after init
         self.master_chat = None  # Set from main.py after init
         self.scheduler = AsyncIOScheduler()
         self.jobs: dict = {}
@@ -193,6 +194,24 @@ class SchedulerManager:
         os.makedirs(settings.DATA_DIR, exist_ok=True)
         with open(self.jobs_file, "w") as f:
             json.dump(self.jobs, f, indent=2)
+
+    def _get_strategy_peers(self, agent_id: str) -> list:
+        """Find other agents linked to the same strategies as this agent."""
+        if not self.strategy_manager:
+            return []
+        peers = set()
+        try:
+            for strategy in self.strategy_manager.list_all():
+                agent_ids = strategy.get("agent_ids", [])
+                if agent_id in agent_ids:
+                    for aid in agent_ids:
+                        if aid != agent_id:
+                            agent = self.agent_manager.get_agent(aid)
+                            if agent:
+                                peers.add((aid, agent.name))
+        except Exception:
+            pass
+        return list(peers)
 
     def _seed_default_jobs(self):
         """Create default scheduled jobs that don't already exist."""
@@ -621,6 +640,22 @@ class SchedulerManager:
                 logger.warning(f"Memory context build failed for job {job_id}: {e}")
 
             enhanced_prompt = f"{memory_context}\n\n{prompt}" if memory_context else prompt
+
+            # Inject cross-agent learnings from strategy peers
+            try:
+                if self.agent_memory_manager and self.strategy_manager:
+                    strategy_peers = self._get_strategy_peers(agent_id)
+                    if strategy_peers:
+                        cross_learnings = []
+                        for peer_id, peer_name in strategy_peers:
+                            recent = self.agent_memory_manager.get_recent(peer_id, limit=3)
+                            for mem in recent:
+                                cross_learnings.append(f"[{peer_name}] {mem.content}")
+                        if cross_learnings:
+                            enhanced_prompt += f"\n\n---\nRecent intelligence from your team:\n" + "\n".join(cross_learnings[:8])
+                            logger.info(f"Injected {len(cross_learnings[:8])} cross-agent learnings for job '{job_config['name']}'")
+            except Exception as e:
+                logger.warning(f"Cross-agent learning injection failed for job {job_id}: {e}")
 
             # Fix 3: Route HDL jobs through Master Chat for tool access
             use_master_chat = job_config.get("use_master_chat", False)

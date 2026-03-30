@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Search, Star, FileText, Copy, Trash2, X, ChevronDown, Circle, ExternalLink, Upload } from 'lucide-react'
-import { getReports, getReportStats, updateReport, deleteReport, publishReportToNotion, getNotionStatus } from '../lib/api'
+import { getReports, getReportStats, updateReport, deleteReport, publishReportToNotion, getNotionStatus, getAgents } from '../lib/api'
 import { formatDistanceToNow, parseUTC } from '../lib/time'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -9,20 +9,6 @@ import { EmptyState } from '../components/EmptyState'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-const AGENTS = [
-  { name: 'All', color: null },
-  { name: 'Scout', color: '#3b6fcc' },
-  { name: 'Quill', color: '#c4682d' },
-  { name: 'Forge', color: '#7c5bbf' },
-  { name: 'Radar', color: '#1d8fa0' },
-]
-
-const AGENT_COLORS = {
-  Scout: '#3b6fcc',
-  Quill: '#c4682d',
-  Forge: '#7c5bbf',
-  Radar: '#1d8fa0',
-}
 
 const REPORT_TYPES = [
   { value: null, label: 'All Reports' },
@@ -72,10 +58,25 @@ export function Documents() {
   const [mobileViewerOpen, setMobileViewerOpen] = useState(false)
   const [notionStatus, setNotionStatus] = useState(null)
   const [publishing, setPublishing] = useState(null)
+  const [allAgents, setAllAgents] = useState([])
   const { events } = useWebSocket()
   const [searchParams] = useSearchParams()
 
   const LIMIT = 50
+
+  useEffect(() => {
+    getAgents()
+      .then(data => setAllAgents(Array.isArray(data) ? data : data.agents || []))
+      .catch(() => {})
+  }, [])
+
+  const agentColor = (name) => {
+    const agent = allAgents.find(a => a.name === name)
+    if (agent?.color) return agent.color
+    let hash = 0
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+    return `hsl(${Math.abs(hash) % 360}, 60%, 50%)`
+  }
 
   const loadReports = useCallback(async (reset = true) => {
     if (reset) setIsLoading(true)
@@ -220,7 +221,6 @@ export function Documents() {
     } catch {}
   }
 
-  const agentColor = (name) => AGENT_COLORS[name] || '#6b7280'
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden">
@@ -250,25 +250,28 @@ export function Documents() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-2">Agents</div>
             <div className="flex flex-wrap gap-1.5">
-              {AGENTS.map(a => {
+              <button
+                onClick={() => setAgentFilter(null)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-subtle ${
+                  !agentFilter ? 'text-white' : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                }`}
+                style={!agentFilter ? { backgroundColor: 'rgba(255,255,255,0.1)' } : {}}
+              >
+                All
+              </button>
+              {allAgents.map(agent => {
                 const filterNames = agentFilter ? agentFilter.split(',').map(n => n.trim()) : []
-                const isActive = (a.name === 'All' && !agentFilter) || agentFilter === a.name || filterNames.includes(a.name)
+                const isActive = agentFilter === agent.name || filterNames.includes(agent.name)
                 return (
                   <button
-                    key={a.name}
-                    onClick={() => setAgentFilter(a.name === 'All' ? null : a.name)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-subtle ${
-                      isActive ? 'text-white' : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                    key={agent.id}
+                    onClick={() => setAgentFilter(agent.name)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-subtle ${
+                      isActive ? 'text-white bg-lab-accent/80' : 'text-lab-text-secondary hover:bg-white/[0.03]'
                     }`}
-                    style={
-                      isActive && a.color
-                        ? { backgroundColor: a.color }
-                        : (a.name === 'All' && !agentFilter)
-                          ? { backgroundColor: 'rgba(255,255,255,0.1)' }
-                          : {}
-                    }
                   >
-                    {a.name}
+                    <AvatarCircle name={agent.name} agent={agent.name} size={14} />
+                    {agent.name}
                   </button>
                 )
               })}

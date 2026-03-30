@@ -1543,28 +1543,52 @@ class MasterChat:
                             "instruction": f"Execute your part of the strategy: {strategy.get('approach', strategy['title'])}. Focus on your speciality as {agent.role}.",
                         })
 
-                # Delegate to collaborate tool
+                # Smart mode: use sequential if approach implies dependencies
+                approach = strategy.get("approach", "").lower()
+                sequential_signals = ["then", "based on", "after", "followed by", "using the", "hand off"]
+                mode = "sequential" if any(s in approach for s in sequential_signals) else "parallel"
+
                 result = await self._execute_tool("collaborate", {
                     "task": f"Strategy: {strategy['title']} — {args['task']}",
                     "agents": agent_specs,
-                    "mode": "sequential",
+                    "mode": mode,
                 })
 
                 # Save execution result as a report
                 try:
                     from app.models import ReportCreate
-                    primary_agent = self._resolve_agent_by_id(agent_ids[0])
+                    all_agent_names = [s["agent_name"] for s in agent_specs]
                     report_data = ReportCreate(
                         title=f"Strategy Execution: {strategy['title']}",
                         content=result,
                         report_type="strategy_execution",
                         agent_id=agent_ids[0],
-                        agent_name=primary_agent.name if primary_agent else "Unknown",
+                        agent_name=", ".join(all_agent_names),
                         source="strategy",
                     )
                     report = self.report_manager.create_report(report_data)
                     if self.ws_manager:
                         await self.ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+
+                        # Save individual per-agent reports for searchability
+                        for spec in agent_specs:
+                            agent = self._resolve_agent_by_name(spec["agent_name"]) if hasattr(self, '_resolve_agent_by_name') else self.agent_manager.get_agent_by_name(spec["agent_name"])
+                            if agent:
+                                import re
+                                pattern = rf'\*\*{re.escape(spec["agent_name"])}:\*\*\n(.*?)(?=\n---|\n\*\*[A-Z]|\Z)'
+                                match = re.search(pattern, result, re.DOTALL)
+                                agent_section = match.group(1).strip() if match else ""
+                                if agent_section and len(agent_section.strip()) > 20:
+                                    individual = self.report_manager.create_report(ReportCreate(
+                                        title=f"{spec['agent_name']}: {strategy['title']}",
+                                        content=agent_section,
+                                        report_type="strategy_execution",
+                                        agent_id=agent.id,
+                                        agent_name=spec["agent_name"],
+                                        source="strategy",
+                                    ))
+                                    await self.ws_manager.broadcast("report_created", individual.model_dump(mode="json"))
+
                         await self.ws_manager.broadcast("strategy_changed", {"action": "executed", "strategy_id": args["strategy_id"]})
                     if self.notion_bridge and self.notion_bridge.configured:
                         try:

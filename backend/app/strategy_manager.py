@@ -78,7 +78,7 @@ class StrategyManager:
 
     # --- Progress aggregation ---
 
-    def get_progress(self, sid: str, report_manager, scheduler_manager, cost_tracker) -> dict:
+    def get_progress(self, sid: str, report_manager, scheduler_manager, cost_tracker, agent_memory_manager=None, agent_manager=None) -> dict:
         """Aggregate progress metrics from linked agents and schedules."""
         strategy = self.get(sid)
         if not strategy:
@@ -170,6 +170,25 @@ class StrategyManager:
         # Cost for strategy agents over 7 days
         total_cost_7d = cost_tracker.get_cost_for_agents(agent_ids, days=7)
 
+        # Gather recent agent learnings linked to this strategy
+        agent_learnings = []
+        if agent_memory_manager and agent_manager:
+            try:
+                for aid in agent_ids:
+                    agent = agent_manager.get_agent(aid)
+                    recent_mems = agent_memory_manager.get_recent(aid, limit=3)
+                    for mem in recent_mems:
+                        agent_learnings.append({
+                            "agent_name": agent.name if agent else aid,
+                            "content": mem.content,
+                            "type": mem.memory_type if hasattr(mem, 'memory_type') else "insight",
+                            "created_at": mem.created_at.isoformat() if hasattr(mem.created_at, 'isoformat') else str(mem.created_at),
+                        })
+                agent_learnings.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+                agent_learnings = agent_learnings[:8]
+            except Exception:
+                pass
+
         return {
             "strategy_id": sid,
             "reports_count": len(agent_reports),
@@ -184,4 +203,5 @@ class StrategyManager:
             "last_execution_at": last_execution_at,
             "success_rate_7d": success_rate_7d,
             "total_cost_7d": total_cost_7d,
+            "agent_learnings": agent_learnings,
         }
