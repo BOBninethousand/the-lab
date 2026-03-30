@@ -49,6 +49,18 @@ def _headers() -> dict:
     }
 
 
+def _validated_response(response) -> dict:
+    """Ensure response.json() returns a dict; wrap non-dict values."""
+    data = response.json()
+    if isinstance(data, dict):
+        return data
+    return {
+        "success": False,
+        "error": f"Unexpected API response type: {type(data).__name__}",
+        "raw_response": data,
+    }
+
+
 def submit_health_assessment(email: str, form_data: dict, agent_name: str = "unknown") -> dict:
     """
     Submit a health assessment for a Lab test user.
@@ -75,7 +87,7 @@ def submit_health_assessment(email: str, form_data: dict, agent_name: str = "unk
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
-    return response.json()
+    return _validated_response(response)
 
 
 def submit_longevity_assessment(email: str, complete_data: dict, agent_name: str = "unknown") -> dict:
@@ -105,7 +117,7 @@ def submit_longevity_assessment(email: str, complete_data: dict, agent_name: str
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
-    return response.json()
+    return _validated_response(response)
 
 
 def check_user_status(email: str) -> dict:
@@ -127,7 +139,7 @@ def check_user_status(email: str) -> dict:
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
-    return response.json()
+    return _validated_response(response)
 
 
 def reset_credits(email: str, amount: int = 100, agent_name: str = "system") -> dict:
@@ -155,7 +167,7 @@ def reset_credits(email: str, amount: int = 100, agent_name: str = "system") -> 
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
-    return response.json()
+    return _validated_response(response)
 
 
 def ssh_diagnostics(command_name: str, args: str = "") -> str:

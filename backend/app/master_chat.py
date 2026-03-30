@@ -1589,6 +1589,8 @@ class MasterChat:
                 persona = self._load_hdl_persona(persona_name)
                 form_data = build_health_form_data(persona)
                 result = submit_health_assessment(persona["email"], form_data, persona_name)
+                if not isinstance(result, dict):
+                    return f"Health assessment for {persona['name']}: unexpected API response: {result}"
                 summary = f"Health assessment submitted for {persona['name']}: submission_id={result.get('submission_id', 'n/a')}, success={result.get('success', False)}"
                 if self.ws_manager:
                     await self.ws_manager.broadcast("tool_executed", {
@@ -1604,6 +1606,8 @@ class MasterChat:
                 persona = self._load_hdl_persona(persona_name)
                 complete_data = build_longevity_form_data(persona)
                 result = submit_longevity_assessment(persona["email"], complete_data, persona_name)
+                if not isinstance(result, dict):
+                    return f"Longevity assessment for {persona['name']}: unexpected API response: {result}"
                 summary = f"Longevity assessment submitted for {persona['name']}: submission_id={result.get('submission_id', 'n/a')}, make_status={result.get('make_status', 'n/a')}, success={result.get('success', False)}"
                 if self.ws_manager:
                     await self.ws_manager.broadcast("tool_executed", {
@@ -1618,6 +1622,8 @@ class MasterChat:
                 persona_name = args["persona_name"]
                 persona = self._load_hdl_persona(persona_name)
                 result = check_user_status(persona["email"])
+                if not isinstance(result, dict):
+                    return f"HDL status for {persona['name']}: unexpected API response (got {type(result).__name__}: {result})"
                 credits = result.get("credits", {})
                 usage = result.get("daily_usage", {})
                 summary = (
@@ -1640,6 +1646,8 @@ class MasterChat:
                 amount = args.get("amount", 100)
                 practitioner_email = "260128vm+practitioner@gmail.com"
                 result = reset_credits(practitioner_email, amount, "master_chat")
+                if not isinstance(result, dict):
+                    return f"Credit reset: unexpected API response: {result}"
                 summary = f"Credits reset: added {amount} to practitioner pool. New balances: {json.dumps(result.get('credits', result))}"
                 if self.ws_manager:
                     await self.ws_manager.broadcast("tool_executed", {
