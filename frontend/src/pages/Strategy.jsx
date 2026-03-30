@@ -75,6 +75,7 @@ export function Strategy() {
   })
 
   const [executingId, setExecutingId] = useState(null)
+  const [executionProgress, setExecutionProgress] = useState({}) // { strategyId: { agents: [], completed: [], current: null } }
   const [agentStatuses, setAgentStatuses] = useState({})
   const [viewingReport, setViewingReport] = useState(null)
   const [loadingReport, setLoadingReport] = useState(false)
@@ -84,12 +85,45 @@ export function Strategy() {
   const expandedIdRef = useRef(null)
   useEffect(() => { expandedIdRef.current = expandedId }, [expandedId])
 
-  // Track agent running/idle status via WebSocket
+  // Track agent running/idle status + execution progress via WebSocket
   useEffect(() => {
     if (events.length > 0) {
       const e = events[0]
       if (e.type === 'agent_status' && e.data?.id) {
         setAgentStatuses(prev => ({ ...prev, [e.data.id]: { status: e.data.status, current_task: e.data.current_task } }))
+      }
+      // Strategy execution lifecycle events
+      if (e.type === 'strategy_executing' && e.data?.strategy_id) {
+        setExecutingId(e.data.strategy_id)
+        setExecutionProgress(prev => ({
+          ...prev,
+          [e.data.strategy_id]: { agents: e.data.agent_names || [], completed: [], current: null },
+        }))
+      }
+      if (e.type === 'strategy_executed' && e.data?.strategy_id) {
+        setExecutingId(prev => prev === e.data.strategy_id ? null : prev)
+        setExecutionProgress(prev => { const next = { ...prev }; delete next[e.data.strategy_id]; return next })
+        if (!e.data.success) showError(`Strategy failed: ${e.data.error || 'Unknown error'}`)
+      }
+      // Per-agent progress during collaboration
+      if (e.type === 'master_chat_progress' && e.data?.agent_name) {
+        if (e.data.stage === 'agent_turn') {
+          setExecutionProgress(prev => {
+            const sid = executingId
+            if (!sid || !prev[sid]) return prev
+            return { ...prev, [sid]: { ...prev[sid], current: e.data.agent_name } }
+          })
+        }
+        if (e.data.stage === 'agent_done') {
+          setExecutionProgress(prev => {
+            const sid = executingId
+            if (!sid || !prev[sid]) return prev
+            const completed = prev[sid].completed.includes(e.data.agent_name)
+              ? prev[sid].completed
+              : [...prev[sid].completed, e.data.agent_name]
+            return { ...prev, [sid]: { ...prev[sid], completed, current: null } }
+          })
+        }
       }
       if (e.type === 'strategy_changed') {
         getStrategies().catch(() => []).then(d => setStrategies(Array.isArray(d) ? d : []))
@@ -110,7 +144,7 @@ export function Strategy() {
         getSchedule().catch(() => []).then(d => setSchedules(Array.isArray(d) ? d : []))
       }
     }
-  }, [events])
+  }, [events, executingId])
 
   const handleViewReport = async (reportId) => {
     setLoadingReport(true)
@@ -123,11 +157,10 @@ export function Strategy() {
 
   const handleExecute = async (strategy) => {
     if (executingId) return
-    setExecutingId(strategy.id)
     try {
       await executeStrategy(strategy.id)
-    } catch { showError('Strategy execution failed') }
-    finally { setExecutingId(null) }
+      // executingId is set by the strategy_executing WebSocket event, not here
+    } catch { showError('Failed to start strategy execution') }
   }
 
   const timeAgo = (isoStr) => {
@@ -666,6 +699,34 @@ export function Strategy() {
                           <span className="flex items-center gap-1">
                             <Link2 size={11} /> {prog.schedule_count} schedules
                           </span>
+                        </div>
+                      )}
+
+                      {/* Live execution progress */}
+                      {executionProgress[strategy.id] && (
+                        <div className="bg-lab-accent/5 border border-lab-accent/20 rounded-lg p-3 space-y-2">
+                          <div className="flex items-center gap-2 text-xs font-medium text-lab-accent">
+                            <Zap size={13} className="animate-pulse" />
+                            Executing strategy — {executionProgress[strategy.id].completed.length}/{executionProgress[strategy.id].agents.length} agents done
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {executionProgress[strategy.id].agents.map(name => {
+                              const isDone = executionProgress[strategy.id].completed.includes(name)
+                              const isCurrent = executionProgress[strategy.id].current === name
+                              return (
+                                <span key={name} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium ${
+                                  isDone
+                                    ? 'bg-emerald-500/15 text-emerald-400'
+                                    : isCurrent
+                                    ? 'bg-lab-accent/15 text-lab-accent'
+                                    : 'bg-white/[0.04] text-lab-text-muted'
+                                }`}>
+                                  {isDone ? <CheckCircle2 size={11} /> : isCurrent ? <Zap size={11} className="animate-pulse" /> : <Clock size={11} />}
+                                  {name}
+                                </span>
+                              )
+                            })}
+                          </div>
                         </div>
                       )}
 

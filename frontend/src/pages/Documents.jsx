@@ -250,26 +250,28 @@ export function Documents() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-lab-text-muted mb-2">Agents</div>
             <div className="flex flex-wrap gap-1.5">
-              {AGENTS.map(a => (
-                <button
-                  key={a.name}
-                  onClick={() => setAgentFilter(a.name === 'All' ? null : a.name)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-subtle ${
-                    (a.name === 'All' && !agentFilter) || agentFilter === a.name
-                      ? 'text-white'
-                      : 'text-lab-text-secondary hover:bg-white/[0.03]'
-                  }`}
-                  style={
-                    ((a.name === 'All' && !agentFilter) || agentFilter === a.name) && a.color
-                      ? { backgroundColor: a.color }
-                      : (a.name === 'All' && !agentFilter)
-                        ? { backgroundColor: 'rgba(255,255,255,0.1)' }
-                        : {}
-                  }
-                >
-                  {a.name}
-                </button>
-              ))}
+              {AGENTS.map(a => {
+                const filterNames = agentFilter ? agentFilter.split(',').map(n => n.trim()) : []
+                const isActive = (a.name === 'All' && !agentFilter) || agentFilter === a.name || filterNames.includes(a.name)
+                return (
+                  <button
+                    key={a.name}
+                    onClick={() => setAgentFilter(a.name === 'All' ? null : a.name)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-subtle ${
+                      isActive ? 'text-white' : 'text-lab-text-secondary hover:bg-white/[0.03]'
+                    }`}
+                    style={
+                      isActive && a.color
+                        ? { backgroundColor: a.color }
+                        : (a.name === 'All' && !agentFilter)
+                          ? { backgroundColor: 'rgba(255,255,255,0.1)' }
+                          : {}
+                    }
+                  >
+                    {a.name}
+                  </button>
+                )
+              })}
             </div>
           </div>
 

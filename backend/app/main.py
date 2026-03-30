@@ -1639,7 +1639,7 @@ async def delete_strategy(strategy_id: str):
 
 @app.post("/api/strategies/{strategy_id}/execute")
 async def execute_strategy_endpoint(strategy_id: str):
-    """Execute a strategy's agents and save results as reports."""
+    """Fire-and-forget strategy execution — returns immediately, progress via WebSocket."""
     strategy = strategy_manager.get(strategy_id)
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
@@ -1659,36 +1659,51 @@ async def execute_strategy_endpoint(strategy_id: str):
     if not agent_specs:
         raise HTTPException(status_code=400, detail="No valid agents found")
 
-    try:
-        result = await asyncio.wait_for(
-            master_chat._execute_tool("collaborate", {
+    async def _run_strategy():
+        try:
+            await ws_manager.broadcast("strategy_executing", {
+                "strategy_id": strategy_id,
+                "title": strategy["title"],
+                "agent_names": [s["agent_name"] for s in agent_specs],
+            })
+            result = await master_chat._execute_tool("collaborate", {
                 "task": f"Strategy: {strategy['title']}",
                 "agents": agent_specs,
-                "mode": "sequential",
-            }),
-            timeout=90,
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Strategy execution timed out")
+                "mode": "parallel",
+            })
+            # Save result as a report
+            primary_agent = agent_manager.get_agent(agent_ids[0])
+            report = report_manager.create_report(ReportCreate(
+                title=f"Strategy Execution: {strategy['title']}",
+                content=result,
+                report_type="strategy_execution",
+                agent_id=agent_ids[0],
+                agent_name=primary_agent.name if primary_agent else "Unknown",
+                source="strategy",
+            ))
+            await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
+            await ws_manager.broadcast("strategy_executed", {
+                "strategy_id": strategy_id,
+                "report_id": report.id,
+                "title": strategy["title"],
+                "success": True,
+            })
+            await ws_manager.broadcast("strategy_changed", {"action": "executed", "strategy_id": strategy_id})
+            if notion_bridge.configured:
+                asyncio.create_task(_publish_report_to_notion(report))
+            asyncio.create_task(_extract_report_learnings(report))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Strategy execution failed: {e}")
+            await ws_manager.broadcast("strategy_executed", {
+                "strategy_id": strategy_id,
+                "title": strategy["title"],
+                "success": False,
+                "error": str(e)[:200],
+            })
 
-    # Save result as a report
-    primary_agent = agent_manager.get_agent(agent_ids[0])
-    report = report_manager.create_report(ReportCreate(
-        title=f"Strategy Execution: {strategy['title']}",
-        content=result,
-        report_type="strategy_execution",
-        agent_id=agent_ids[0],
-        agent_name=primary_agent.name if primary_agent else "Unknown",
-        source="strategy",
-    ))
-    await ws_manager.broadcast("report_created", report.model_dump(mode="json"))
-    await ws_manager.broadcast("strategy_changed", {"action": "executed", "strategy_id": strategy_id})
-
-    if notion_bridge.configured:
-        asyncio.create_task(_publish_report_to_notion(report))
-    asyncio.create_task(_extract_report_learnings(report))
-
-    return {"status": "completed", "strategy_id": strategy_id, "report_id": report.id, "result_preview": result[:500]}
+    asyncio.create_task(_run_strategy())
+    return {"status": "started", "strategy_id": strategy_id, "agents": [s["agent_name"] for s in agent_specs]}
 
 
 @app.get("/api/strategies/{strategy_id}/progress")
