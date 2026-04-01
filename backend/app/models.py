@@ -4,12 +4,12 @@ from typing import Optional, List
 
 
 class AgentCreate(BaseModel):
-    name: str
-    role: str
-    goal: str
-    backstory: str
-    provider: str  # openai, anthropic, ollama
-    model_name: str
+    name: str = Field(max_length=200)
+    role: str = Field(max_length=500)
+    goal: str = Field(max_length=2000)
+    backstory: str = Field(max_length=50000)
+    provider: str = Field(max_length=50)  # openai, anthropic, ollama
+    model_name: str = Field(max_length=100)
 
 
 class Agent(BaseModel):
@@ -27,9 +27,9 @@ class Agent(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    title: str
-    description: str
-    agent_id: str
+    title: str = Field(max_length=500)
+    description: str = Field(max_length=10000)
+    agent_id: str = Field(max_length=100)
 
 
 class Task(BaseModel):
@@ -44,10 +44,10 @@ class Task(BaseModel):
 
 
 class CrewCreate(BaseModel):
-    name: str
+    name: str = Field(max_length=200)
     agent_ids: List[str]
     task_descriptions: List[str]
-    process_type: str  # sequential, hierarchical
+    process_type: str = Field(max_length=50)  # sequential, hierarchical
 
 
 class Crew(BaseModel):
@@ -62,9 +62,9 @@ class Crew(BaseModel):
 
 
 class MemoryCreate(BaseModel):
-    content: str
+    content: str = Field(max_length=50000)
     tags: List[str] = []
-    source: str
+    source: str = Field(max_length=100)
 
 
 class MemoryEntry(BaseModel):
@@ -76,9 +76,9 @@ class MemoryEntry(BaseModel):
 
 
 class JournalCreate(BaseModel):
-    title: str
-    content: str
-    highlights: Optional[str] = None
+    title: str = Field(max_length=500)
+    content: str = Field(max_length=50000)
+    highlights: Optional[str] = Field(default=None, max_length=10000)
 
 
 class JournalEntry(BaseModel):
@@ -90,10 +90,10 @@ class JournalEntry(BaseModel):
 
 
 class DocumentCreate(BaseModel):
-    title: str
-    content: str
-    doc_type: str  # brief, report, draft, code, other
-    agent_id: Optional[str] = None
+    title: str = Field(max_length=500)
+    content: str = Field(max_length=100000)
+    doc_type: str = Field(max_length=50)  # brief, report, draft, code, other
+    agent_id: Optional[str] = Field(default=None, max_length=100)
 
 
 class Document(BaseModel):
@@ -106,23 +106,23 @@ class Document(BaseModel):
 
 
 class ScheduledJobCreate(BaseModel):
-    name: str
-    description: str
-    cron_expression: str
-    prompt: str
-    agent_id: str
+    name: str = Field(max_length=200)
+    description: str = Field(max_length=2000)
+    cron_expression: str = Field(max_length=100)
+    prompt: str = Field(max_length=10000)
+    agent_id: str = Field(max_length=100)
 
 
 class ScheduledJobCreateSimple(BaseModel):
-    name: str
-    description: str
-    frequency: str = "daily"  # daily, weekdays, weekly, monthly, custom
-    time: str = "09:00"  # HH:MM
-    day_of_week: Optional[str] = None  # mon, tue, etc.
+    name: str = Field(max_length=200)
+    description: str = Field(max_length=2000)
+    frequency: str = Field(default="daily", max_length=50)  # daily, weekdays, weekly, monthly, custom
+    time: str = Field(default="09:00", max_length=10)  # HH:MM
+    day_of_week: Optional[str] = Field(default=None, max_length=20)  # mon, tue, etc.
     day_of_month: Optional[int] = None
-    cron_expression: Optional[str] = None  # only for custom frequency
-    prompt: str
-    agent_id: str
+    cron_expression: Optional[str] = Field(default=None, max_length=100)  # only for custom frequency
+    prompt: str = Field(max_length=10000)
+    agent_id: str = Field(max_length=100)
 
 
 class ScheduledJob(BaseModel):
@@ -161,8 +161,8 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    agent_id: str
-    message: str
+    agent_id: str = Field(max_length=100)
+    message: str = Field(max_length=50000)
 
 
 class WebSocketEvent(BaseModel):
@@ -173,11 +173,11 @@ class WebSocketEvent(BaseModel):
 # --- Memory System Models ---
 
 class KnowledgeCreate(BaseModel):
-    title: str
-    content: str
+    title: str = Field(max_length=500)
+    content: str = Field(max_length=100000)
     tags: List[str] = []
-    category: str = "fact"  # rule, fact, reference, preference
-    notion_page_id: Optional[str] = None
+    category: str = Field(default="fact", max_length=50)  # rule, fact, reference, preference
+    notion_page_id: Optional[str] = Field(default=None, max_length=200)
 
 
 class KnowledgeEntry(BaseModel):
@@ -194,8 +194,8 @@ class KnowledgeEntry(BaseModel):
 
 
 class AgentMemoryCreate(BaseModel):
-    content: str
-    memory_type: str = "insight"  # insight, learning, preference, fact
+    content: str = Field(max_length=50000)
+    memory_type: str = Field(default="insight", max_length=50)  # insight, learning, preference, fact
     tags: List[str] = []
 
 
@@ -211,9 +211,9 @@ class AgentMemoryEntry(BaseModel):
 
 
 class CorrectionCreate(BaseModel):
-    agent_id: str
-    original_response: str
-    correction: str
+    agent_id: str = Field(max_length=100)
+    original_response: str = Field(max_length=50000)
+    correction: str = Field(max_length=50000)
     tags: List[str] = []
 
 
@@ -240,12 +240,12 @@ class MemoryStats(BaseModel):
 # --- Report Models ---
 
 class ReportCreate(BaseModel):
-    title: str
-    content: str
-    report_type: str  # briefing, content, tech_report, outreach, weekly_review, content_calendar
-    agent_id: str
-    agent_name: str  # Scout, Quill, Forge, Radar
-    source: str = "scheduled"  # scheduled, manual, n8n
+    title: str = Field(max_length=500)
+    content: str = Field(max_length=200000)
+    report_type: str = Field(max_length=50)  # briefing, content, tech_report, outreach, weekly_review, content_calendar
+    agent_id: str = Field(max_length=100)
+    agent_name: str = Field(max_length=100)  # Scout, Quill, Forge, Radar
+    source: str = Field(default="scheduled", max_length=50)  # scheduled, manual, n8n
     starred: bool = False
 
 
@@ -266,29 +266,29 @@ class Report(BaseModel):
 # --- Strategy Models ---
 
 class MasterChatRequest(BaseModel):
-    message: str
+    message: str = Field(max_length=50000)
 
 
 class MasterChatConfig(BaseModel):
-    provider: str = "openai"  # openai, anthropic, ollama
-    model_name: str = "gpt-5.4"
+    provider: str = Field(default="openai", max_length=50)  # openai, anthropic, ollama
+    model_name: str = Field(default="gpt-5.4", max_length=100)
 
 
 class StrategyCreate(BaseModel):
-    title: str
-    problem: str = ""
-    approach: str = ""
+    title: str = Field(max_length=500)
+    problem: str = Field(default="", max_length=10000)
+    approach: str = Field(default="", max_length=10000)
     agent_ids: List[str] = []
     schedule_ids: List[str] = []
-    status: str = "active"  # active, paused, completed
+    status: str = Field(default="active", max_length=50)  # active, paused, completed
     tags: List[str] = []
 
 
 class StrategyUpdate(BaseModel):
-    title: Optional[str] = None
-    problem: Optional[str] = None
-    approach: Optional[str] = None
+    title: Optional[str] = Field(default=None, max_length=500)
+    problem: Optional[str] = Field(default=None, max_length=10000)
+    approach: Optional[str] = Field(default=None, max_length=10000)
     agent_ids: Optional[List[str]] = None
     schedule_ids: Optional[List[str]] = None
-    status: Optional[str] = None
+    status: Optional[str] = Field(default=None, max_length=50)
     tags: Optional[List[str]] = None

@@ -2,7 +2,9 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body, Request, UploadFile, File, Form
@@ -206,7 +208,30 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="The Lab", lifespan=lifespan)
 
+
+# --- Rate Limiting Middleware ---
+from starlette.middleware.base import BaseHTTPMiddleware
+
+_rate_limit_requests: dict[str, list[float]] = defaultdict(list)
+RATE_LIMIT_MAX = 60  # requests per window
+RATE_LIMIT_WINDOW = 60  # seconds
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            ip = request.client.host if request.client else "unknown"
+            now = time.time()
+            cutoff = now - RATE_LIMIT_WINDOW
+            _rate_limit_requests[ip] = [t for t in _rate_limit_requests[ip] if t > cutoff]
+            if len(_rate_limit_requests[ip]) >= RATE_LIMIT_MAX:
+                return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Try again later."})
+            _rate_limit_requests[ip].append(now)
+        return await call_next(request)
+
+
 app.add_middleware(AuthMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://lab.healthdatalab.com", "http://localhost:5173"],

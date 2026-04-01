@@ -1,5 +1,6 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Dashboard } from './pages/Dashboard'
 import { Agents } from './pages/Agents'
 import { Office } from './pages/Office'
@@ -32,24 +33,27 @@ export default function App() {
   }
 
   return (
-    <Router>
-      <MasterChat />
-      <Layout onLogout={logout}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/master-chat" element={<MasterChatPage />} />
-          <Route path="/strategy" element={<Strategy />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/office" element={<Office />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/memory" element={<Memory />} />
-          <Route path="/documents" element={<Documents />} />
-          <Route path="/teams" element={<Teams />} />
-          <Route path="/costs" element={<Costs />} />
-          <Route path="/openclaw" element={<OpenClaw />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </Layout>
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        <MasterChat />
+        <Layout onLogout={logout}>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/master-chat" element={<MasterChatPage />} />
+            <Route path="/strategy" element={<Strategy />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/office" element={<Office />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/memory" element={<Memory />} />
+            <Route path="/documents" element={<Documents />} />
+            <Route path="/teams" element={<Teams />} />
+            <Route path="/costs" element={<Costs />} />
+            <Route path="/openclaw" element={<OpenClaw />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Layout>
+      </Router>
+    </ErrorBoundary>
   )
 }
