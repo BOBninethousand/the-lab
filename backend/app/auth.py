@@ -7,10 +7,6 @@ from app.config import settings
 TOKEN_EXPIRY_HOURS = 24
 ALGORITHM = "HS256"
 
-if not settings.LAB_JWT_SECRET or len(settings.LAB_JWT_SECRET) < 32:
-    import logging as _log
-    _log.getLogger(__name__).warning("LAB_JWT_SECRET is missing or too short — auth will reject all requests until configured. Run scripts/setup_auth.py")
-
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
