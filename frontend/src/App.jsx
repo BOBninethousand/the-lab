@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { AuthGate } from './components/AuthGate'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Agents } from './pages/Agents'
@@ -16,24 +17,26 @@ import { MasterChat } from './components/MasterChat'
 
 export default function App() {
   return (
-    <Router>
-      <MasterChat />
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/master-chat" element={<MasterChatPage />} />
-          <Route path="/strategy" element={<Strategy />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/office" element={<Office />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/memory" element={<Memory />} />
-          <Route path="/documents" element={<Documents />} />
-          <Route path="/teams" element={<Teams />} />
-          <Route path="/costs" element={<Costs />} />
-          <Route path="/openclaw" element={<OpenClaw />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </Layout>
-    </Router>
+    <AuthGate>
+      <Router>
+        <MasterChat />
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/master-chat" element={<MasterChatPage />} />
+            <Route path="/strategy" element={<Strategy />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/office" element={<Office />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/memory" element={<Memory />} />
+            <Route path="/documents" element={<Documents />} />
+            <Route path="/teams" element={<Teams />} />
+            <Route path="/costs" element={<Costs />} />
+            <Route path="/openclaw" element={<OpenClaw />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </Layout>
+      </Router>
+    </AuthGate>
   )
 }

@@ -13,7 +13,8 @@ import {
   FlaskConical,
   Zap,
   Plug,
-  Settings
+  Settings,
+  LogOut
 } from 'lucide-react'
 import { useWebSocket } from '../hooks/useWebSocket'
 
@@ -53,6 +54,11 @@ const pageNames = {
 export function Layout({ children }) {
   const location = useLocation()
   const { isConnected, events } = useWebSocket()
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    window.location.href = '/'
+  }
   const [toast, setToast] = React.useState(null)
 
   // Show toast on skill_completed events
@@ -144,6 +150,13 @@ export function Layout({ children }) {
               </Link>
             )
           })}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle text-lab-text-secondary hover:bg-white/[0.03] w-full"
+          >
+            <LogOut size={16} className="text-lab-text-muted" />
+            <span className="text-sm font-medium">Sign out</span>
+          </button>
         </div>
       </div>
 

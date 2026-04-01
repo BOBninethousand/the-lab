@@ -40,8 +40,12 @@ export function useWebSocket() {
           }
         }
 
-        wsRef.current.onclose = () => {
+        wsRef.current.onclose = (event) => {
           setIsConnected(false)
+          if (event.code === 4001) {
+            window.location.href = '/'
+            return
+          }
           // Auto-reconnect after 3 seconds
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000)
         }

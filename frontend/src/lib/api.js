@@ -11,6 +11,11 @@ export async function api(path, options = {}) {
     ...options,
   })
 
+  if (res.status === 401) {
+    window.location.href = '/'
+    return
+  }
+
   if (!res.ok) {
     throw new Error(`API error: ${res.status}`)
   }
@@ -466,6 +471,7 @@ export async function sendMasterChatWithImage(message, imageFile, conversationId
       signal: controller.signal,
     })
     clearTimeout(timer)
+    if (res.status === 401) { window.location.href = '/'; return }
     if (!res.ok) throw new Error(`API error: ${res.status}`)
     return res.json()
   } catch (err) {

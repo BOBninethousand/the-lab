@@ -4,7 +4,7 @@ import { X, Send, Trash2, Plus, FileText, Clock, Zap, Bot, Wifi } from 'lucide-r
 import { EmptyState } from '../components/EmptyState'
 import { AvatarCircle } from '../components/AvatarCircle'
 import { formatDistanceToNow, parseUTC } from '../lib/time'
-import { getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats, createCorrection } from '../lib/api'
+import { api, getAgents, deleteAgent, createAgent, sendChat, getReports, getReportStats, createCorrection } from '../lib/api'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -116,8 +116,8 @@ export function Agents() {
 
   const loadSettings = async () => {
     try {
-      const res = await fetch(`${API}/api/settings`)
-      if (res.ok) setSettings(await res.json())
+      const data = await api('/api/settings')
+      setSettings(data)
     } catch (e) {
       // ignore
     }
@@ -127,7 +127,7 @@ export function Agents() {
     try {
       const [reportStatsData, costsRes] = await Promise.all([
         getReportStats().catch(() => ({ total: 0, unread: 0, today: 0, by_agent: {}, by_type: {} })),
-        fetch(`${API}/api/costs/recent?limit=100`).then(r => r.ok ? r.json() : []).catch(() => []),
+        api('/api/costs/recent?limit=100').catch(() => []),
       ])
 
       const stats = {}
@@ -147,8 +147,7 @@ export function Agents() {
 
         let chatCount = 0
         try {
-          const chatRes = await fetch(`${API}/api/chat/${agent.id}/history`)
-          const chat = chatRes.ok ? await chatRes.json() : []
+          const chat = await api(`/api/chat/${agent.id}/history`)
           chatCount = Array.isArray(chat) ? chat.filter(m => m.role === 'assistant').length : 0
         } catch (e) {
           // ignore

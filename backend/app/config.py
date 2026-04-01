@@ -25,5 +25,10 @@ class Settings:
     NOTION_PARENT_PAGE_ID: str = os.getenv("NOTION_PARENT_PAGE_ID", "")
     IMPORT_ALLOWED_DIRS: str = os.getenv("IMPORT_ALLOWED_DIRS", "")  # comma-separated allowed base directories for file import
 
+    # Authentication
+    LAB_AUTH_EMAIL: str = os.getenv("LAB_AUTH_EMAIL", "")
+    LAB_AUTH_HASH: str = os.getenv("LAB_AUTH_HASH", "")
+    LAB_JWT_SECRET: str = os.getenv("LAB_JWT_SECRET", "")
+
 
 settings = Settings()
