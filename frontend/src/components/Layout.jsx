@@ -51,14 +51,9 @@ const pageNames = {
   '/settings': 'Settings',
 }
 
-export function Layout({ children }) {
+export function Layout({ children, onLogout }) {
   const location = useLocation()
   const { isConnected, events } = useWebSocket()
-
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    window.location.href = '/'
-  }
   const [toast, setToast] = React.useState(null)
 
   // Show toast on skill_completed events
@@ -151,11 +146,11 @@ export function Layout({ children }) {
             )
           })}
           <button
-            onClick={handleLogout}
-            className="flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle text-lab-text-secondary hover:bg-white/[0.03] w-full"
+            onClick={onLogout}
+            className="flex items-center gap-2.5 h-9 px-4 rounded-md mx-1 transition-subtle text-red-400/70 hover:text-red-400 hover:bg-white/[0.03] w-full"
           >
-            <LogOut size={16} className="text-lab-text-muted" />
-            <span className="text-sm font-medium">Sign out</span>
+            <LogOut size={16} />
+            <span className="text-sm font-medium">Sign Out</span>
           </button>
         </div>
       </div>

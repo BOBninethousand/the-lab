@@ -199,6 +199,41 @@ body {
   background-color: #f59e0b;
 }
 
+/* Login animations */
+@keyframes login-fade-up {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-login-enter { animation: login-fade-up 0.4s ease-out; }
+
+@keyframes login-exit {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.96); }
+}
+.animate-login-exit { animation: login-exit 0.3s ease-in forwards; }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+.animate-shake { animation: shake 0.4s ease-in-out; }
+
+@keyframes orb-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -20px) scale(1.05); }
+  50% { transform: translate(-10px, 20px) scale(0.95); }
+  75% { transform: translate(-30px, -10px) scale(1.02); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+.animate-orb { animation: orb-drift 20s ease-in-out infinite; }
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 20px rgba(129, 140, 248, 0.3); }
+  50% { opacity: 1; box-shadow: 0 0 40px rgba(129, 140, 248, 0.6); }
+}
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+
 /* Master Chat — Markdown prose styling */
 .prose-chat {
   font-size: 14px;

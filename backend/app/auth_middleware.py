@@ -2,20 +2,17 @@ import logging
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from app.auth import decode_token
+from app.auth import verify_token
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = {
+OPEN_PATHS = {
     "/api/auth/login",
-    "/api/auth/check",
-    "/api/auth/logout",
+    "/api/auth/verify",
     "/api/health",
+    "/docs",
+    "/openapi.json",
 }
-
-PUBLIC_PREFIXES = (
-    "/assets/",
-)
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -29,16 +26,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
 
-        # Skip auth for public paths and non-API paths (SPA static files)
         needs_auth = (
             path.startswith("/api/")
-            and path not in PUBLIC_PATHS
-            and not any(path.startswith(p) for p in PUBLIC_PREFIXES)
+            and path not in OPEN_PATHS
+            and request.method != "OPTIONS"
         )
 
         if needs_auth:
-            token = request.cookies.get("lab_session")
-            if not token or not decode_token(token):
+            auth_header = request.headers.get("Authorization", "")
+            token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+            if not token or not verify_token(token):
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Not authenticated"},
@@ -46,7 +43,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        # Add security headers to all responses
         for header, value in SECURITY_HEADERS.items():
             response.headers[header] = value
 

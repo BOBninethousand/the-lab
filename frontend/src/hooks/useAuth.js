@@ -1,35 +1,51 @@
 import { useState, useEffect, useCallback } from 'react'
 
+const TOKEN_KEY = 'lab_auth_token'
+
 export function useAuth() {
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isChecking, setIsChecking] = useState(true)
 
-  useEffect(() => {
-    fetch('/api/auth/check')
-      .then(res => res.json())
-      .then(data => setIsAuthenticated(data.authenticated === true))
-      .catch(() => setIsAuthenticated(false))
-      .finally(() => setIsLoading(false))
-  }, [])
-
-  const login = useCallback(async (email, password) => {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-    const data = await res.json()
-    if (res.ok) {
-      setIsAuthenticated(true)
-      return { ok: true }
+  const verify = useCallback(async () => {
+    const stored = localStorage.getItem(TOKEN_KEY)
+    if (!stored) {
+      setIsAuthenticated(false)
+      setIsChecking(false)
+      return
     }
-    return { ok: false, error: data.detail || 'Login failed', status: res.status }
+    try {
+      const res = await fetch('/api/auth/verify', {
+        headers: { Authorization: `Bearer ${stored}` },
+      })
+      if (res.ok) {
+        setToken(stored)
+        setIsAuthenticated(true)
+      } else {
+        localStorage.removeItem(TOKEN_KEY)
+        setToken(null)
+        setIsAuthenticated(false)
+      }
+    } catch {
+      setIsAuthenticated(!!stored)
+    } finally {
+      setIsChecking(false)
+    }
   }, [])
 
-  const logout = useCallback(async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
+  useEffect(() => { verify() }, [verify])
+
+  const login = (newToken) => {
+    localStorage.setItem(TOKEN_KEY, newToken)
+    setToken(newToken)
+    setIsAuthenticated(true)
+  }
+
+  const logout = () => {
+    localStorage.removeItem(TOKEN_KEY)
+    setToken(null)
     setIsAuthenticated(false)
-  }, [])
+  }
 
-  return { isAuthenticated, isLoading, login, logout }
+  return { token, isAuthenticated, isChecking, login, logout }
 }

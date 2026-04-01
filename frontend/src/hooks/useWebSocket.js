@@ -10,7 +10,8 @@ export function useWebSocket() {
     const connectWebSocket = () => {
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const wsUrl = `${protocol}//${window.location.host}/ws`
+        const token = localStorage.getItem('lab_auth_token')
+        const wsUrl = `${protocol}//${window.location.host}/ws${token ? `?token=${token}` : ''}`
 
         wsRef.current = new WebSocket(wsUrl)
 
@@ -43,7 +44,8 @@ export function useWebSocket() {
         wsRef.current.onclose = (event) => {
           setIsConnected(false)
           if (event.code === 4001) {
-            window.location.href = '/'
+            localStorage.removeItem('lab_auth_token')
+            window.location.reload()
             return
           }
           // Auto-reconnect after 3 seconds

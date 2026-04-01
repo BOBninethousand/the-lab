@@ -3,17 +3,20 @@ import { calibrateServerTime } from './time'
 const BASE = ''
 
 export async function api(path, options = {}) {
+  const token = localStorage.getItem('lab_auth_token')
   const res = await fetch(`${BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers
     },
     ...options,
   })
 
   if (res.status === 401) {
-    window.location.href = '/'
-    return
+    localStorage.removeItem('lab_auth_token')
+    window.location.reload()
+    throw new Error('Session expired')
   }
 
   if (!res.ok) {
@@ -465,13 +468,15 @@ export async function sendMasterChatWithImage(message, imageFile, conversationId
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 95000)
   try {
+    const imgToken = localStorage.getItem('lab_auth_token')
     const res = await fetch('/api/master-chat/with-image', {
       method: 'POST',
+      headers: imgToken ? { Authorization: `Bearer ${imgToken}` } : {},
       body: formData,
       signal: controller.signal,
     })
     clearTimeout(timer)
-    if (res.status === 401) { window.location.href = '/'; return }
+    if (res.status === 401) { localStorage.removeItem('lab_auth_token'); window.location.reload(); return }
     if (!res.ok) throw new Error(`API error: ${res.status}`)
     return res.json()
   } catch (err) {

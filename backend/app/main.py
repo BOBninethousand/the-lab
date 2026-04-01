@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 import httpx
 
 from app.config import settings
-from app.auth import verify_password, create_token, decode_token, login_rate_limiter
+from app.auth import login as auth_login_fn, verify_token
 from app.auth_middleware import AuthMiddleware
 from app.models import (
     AgentCreate,
@@ -209,75 +209,49 @@ app = FastAPI(title="The Lab", lifespan=lifespan)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_origins=["https://lab.healthdatalab.com", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 # --- AUTH ENDPOINTS ---
 
 @app.post("/api/auth/login")
-async def auth_login(request: Request):
-    client_ip = request.client.host if request.client else "unknown"
-    if login_rate_limiter.is_blocked(client_ip):
-        retry_after = login_rate_limiter.seconds_until_reset(client_ip)
-        return JSONResponse(
-            status_code=429,
-            content={"detail": f"Too many attempts. Try again in {retry_after // 60 + 1} minutes."},
-            headers={"Retry-After": str(retry_after)},
-        )
-
-    body = await request.json()
-    email = body.get("email", "").strip().lower()
-    password = body.get("password", "")
-
-    if email == settings.LAB_AUTH_EMAIL.lower() and verify_password(password, settings.LAB_AUTH_HASH):
-        token = create_token(email)
-        response = JSONResponse(content={"ok": True})
-        response.set_cookie(
-            key="lab_session",
-            value=token,
-            max_age=86400,
-            path="/",
-            httponly=True,
-            secure=True,
-            samesite="lax",
-        )
-        return response
-
-    login_rate_limiter.record_attempt(client_ip)
-    return JSONResponse(status_code=401, content={"detail": "Invalid email or password"})
+async def auth_login(request: Request, data: dict = Body(...)):
+    email = data.get("email", "")
+    password = data.get("password", "")
+    ip = request.client.host if request.client else "unknown"
+    token = auth_login_fn(email, password, ip)
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid credentials or too many attempts")
+    return {"token": token, "email": email.strip().lower()}
 
 
-@app.get("/api/auth/check")
-async def auth_check(request: Request):
-    token = request.cookies.get("lab_session")
-    if token and decode_token(token):
-        return {"authenticated": True}
-    return {"authenticated": False}
-
-
-@app.post("/api/auth/logout")
-async def auth_logout():
-    response = JSONResponse(content={"ok": True})
-    response.delete_cookie(key="lab_session", path="/", httponly=True, secure=True, samesite="lax")
-    return response
+@app.get("/api/auth/verify")
+async def auth_verify(request: Request):
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+    if not token:
+        raise HTTPException(status_code=401, detail="No token")
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return {"valid": True, "email": payload.get("email")}
 
 
 # WebSocket
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    token = ws.cookies.get("lab_session")
-    if not token or not decode_token(token):
+    token = ws.query_params.get("token")
+    if not token or not verify_token(token):
         await ws.close(code=4001, reason="Unauthorized")
         return
     await ws_manager.connect(ws)
     try:
         while True:
             data = await ws.receive_text()
-            # Echo or handle client messages if needed
     except WebSocketDisconnect:
         ws_manager.disconnect(ws)
 
@@ -1400,8 +1374,8 @@ async def claw3d_ws_proxy(ws: WebSocket):
     """WebSocket relay: browser <-> Claw3D Studio <-> Agent Bus gateway.
     Intercepts config.get and agents.create (not supported by Agent Bus),
     forwards everything else unchanged."""
-    token = ws.cookies.get("lab_session")
-    if not token or not decode_token(token):
+    token = ws.query_params.get("token")
+    if not token or not verify_token(token):
         await ws.close(code=4001, reason="Unauthorized")
         return
     await ws.accept()

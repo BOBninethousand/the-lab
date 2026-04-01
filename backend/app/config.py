@@ -25,10 +25,10 @@ class Settings:
     NOTION_PARENT_PAGE_ID: str = os.getenv("NOTION_PARENT_PAGE_ID", "")
     IMPORT_ALLOWED_DIRS: str = os.getenv("IMPORT_ALLOWED_DIRS", "")  # comma-separated allowed base directories for file import
 
-    # Authentication (defaults allow deploy without .env changes on M1)
+    # Authentication (defaults hardcoded for M1 auto-deploy — .env is gitignored)
     LAB_AUTH_EMAIL: str = os.getenv("LAB_AUTH_EMAIL", "team@irislab.com")
-    LAB_AUTH_HASH: str = os.getenv("LAB_AUTH_HASH", "$2b$12$jdy8DMMV9hpaPV8shY455uMhBixnequYwC18n.oVplGGf.7jyuzNW")
-    LAB_JWT_SECRET: str = os.getenv("LAB_JWT_SECRET", "da370647913609b12e3f0073b3645f75e343c50ab64b04f1a6498495d54659ca")
+    LAB_AUTH_HASH: str = os.getenv("LAB_AUTH_HASH", "$2b$12$s7LoeoWti8CX0S80nMKJQecgvMo9icibn4fZiyip.UC1g.BXi7US6")
+    LAB_JWT_SECRET: str = os.getenv("LAB_JWT_SECRET", "76c5286d5bda57fe64e10cab173f074b22ba48cbe98631762d33bce6af7825cc")
 
 
 settings = Settings()

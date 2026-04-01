@@ -1,11 +1,21 @@
+"""Authentication module — JWT-based single-user auth for The Lab."""
+
+import base64
+import hashlib
+import hmac
+import json
 import time
-import jwt
+from typing import Optional
+
 import bcrypt as _bcrypt
-from datetime import datetime, timezone, timedelta
+
 from app.config import settings
 
 TOKEN_EXPIRY_HOURS = 24
-ALGORITHM = "HS256"
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_SECONDS = 300
+
+_login_attempts: dict = {}
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -15,51 +25,73 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _b64url_decode(s: str) -> bytes:
+    padding = 4 - len(s) % 4
+    return base64.urlsafe_b64decode(s + "=" * padding)
+
+
 def create_token(email: str) -> str:
-    payload = {
-        "sub": email,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRY_HOURS),
-    }
-    return jwt.encode(payload, settings.LAB_JWT_SECRET, algorithm=ALGORITHM)
+    secret = settings.LAB_JWT_SECRET
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    payload = _b64url(json.dumps({
+        "email": email,
+        "iat": int(time.time()),
+        "exp": int(time.time()) + (TOKEN_EXPIRY_HOURS * 3600),
+    }).encode())
+    sig_input = f"{header}.{payload}".encode()
+    signature = _b64url(hmac.new(secret.encode(), sig_input, hashlib.sha256).digest())
+    return f"{header}.{payload}.{signature}"
 
 
-def decode_token(token: str) -> dict | None:
+def verify_token(token: str) -> Optional[dict]:
     try:
-        return jwt.decode(token, settings.LAB_JWT_SECRET, algorithms=[ALGORITHM])
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        header, payload, signature = parts
+        sig_input = f"{header}.{payload}".encode()
+        expected = _b64url(hmac.new(settings.LAB_JWT_SECRET.encode(), sig_input, hashlib.sha256).digest())
+        if not hmac.compare_digest(signature, expected):
+            return None
+        data = json.loads(_b64url_decode(payload))
+        if data.get("exp", 0) < time.time():
+            return None
+        return data
+    except Exception:
         return None
 
 
-class LoginRateLimiter:
-    """Sliding-window rate limiter: max_attempts per window_seconds per IP."""
-
-    def __init__(self, max_attempts: int = 5, window_seconds: int = 900):
-        self.max_attempts = max_attempts
-        self.window_seconds = window_seconds
-        self._attempts: dict[str, list[float]] = {}
-
-    def is_blocked(self, ip: str) -> bool:
-        now = time.time()
-        cutoff = now - self.window_seconds
-        timestamps = self._attempts.get(ip, [])
-        # Prune old entries
-        timestamps = [t for t in timestamps if t > cutoff]
-        self._attempts[ip] = timestamps
-        return len(timestamps) >= self.max_attempts
-
-    def record_attempt(self, ip: str) -> None:
-        now = time.time()
-        if ip not in self._attempts:
-            self._attempts[ip] = []
-        self._attempts[ip].append(now)
-
-    def seconds_until_reset(self, ip: str) -> int:
-        timestamps = self._attempts.get(ip, [])
-        if not timestamps:
-            return 0
-        oldest_in_window = min(timestamps)
-        return max(0, int(self.window_seconds - (time.time() - oldest_in_window)))
+def check_rate_limit(ip: str) -> bool:
+    now = time.time()
+    if ip in _login_attempts:
+        info = _login_attempts[ip]
+        if now - info["first_attempt"] > LOCKOUT_SECONDS:
+            del _login_attempts[ip]
+            return False
+        return info["count"] >= MAX_LOGIN_ATTEMPTS
+    return False
 
 
-login_rate_limiter = LoginRateLimiter()
+def record_attempt(ip: str):
+    now = time.time()
+    if ip not in _login_attempts:
+        _login_attempts[ip] = {"count": 1, "first_attempt": now}
+    else:
+        _login_attempts[ip]["count"] += 1
+
+
+def login(email: str, password: str, ip: str) -> Optional[str]:
+    if check_rate_limit(ip):
+        return None
+    if email.strip().lower() != settings.LAB_AUTH_EMAIL.lower():
+        record_attempt(ip)
+        return None
+    if not verify_password(password, settings.LAB_AUTH_HASH):
+        record_attempt(ip)
+        return None
+    _login_attempts.pop(ip, None)
+    return create_token(email.strip().lower())
