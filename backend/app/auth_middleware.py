@@ -3,6 +3,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from app.auth import verify_token
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if needs_auth:
             auth_header = request.headers.get("Authorization", "")
             token = auth_header[7:] if auth_header.startswith("Bearer ") else None
-            if not token or not verify_token(token):
+            # Allow internal bridge service via shared secret
+            is_bridge = token == settings.LAB_BRIDGE_SECRET
+            if not is_bridge and (not token or not verify_token(token)):
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Not authenticated"},

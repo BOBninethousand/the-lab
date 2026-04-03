@@ -270,7 +270,10 @@ async def auth_verify(request: Request):
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     token = ws.query_params.get("token")
-    if not token or not verify_token(token):
+    # Allow internal bridge service via shared secret
+    if token == settings.LAB_BRIDGE_SECRET:
+        pass  # internal service — skip JWT verification
+    elif not token or not verify_token(token):
         await ws.close(code=4001, reason="Unauthorized")
         return
     await ws_manager.connect(ws)

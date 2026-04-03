@@ -42,6 +42,7 @@ services:
       context: ./services/bridge
     environment:
       - LAB_WS_URL=ws://the-lab:8000/ws
+      - LAB_BRIDGE_SECRET=bridge-internal-7f3a9c2e
       - AGENT_BUS_URL=http://agent-bus:4000/events
       - HEARTBEAT_INTERVAL=30
     depends_on:

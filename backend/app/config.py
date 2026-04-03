@@ -29,6 +29,7 @@ class Settings:
     LAB_AUTH_EMAIL: str = os.getenv("LAB_AUTH_EMAIL", "team@irislab.com")
     LAB_AUTH_HASH: str = os.getenv("LAB_AUTH_HASH", "$2b$12$s7LoeoWti8CX0S80nMKJQecgvMo9icibn4fZiyip.UC1g.BXi7US6")
     LAB_JWT_SECRET: str = os.getenv("LAB_JWT_SECRET", "76c5286d5bda57fe64e10cab173f074b22ba48cbe98631762d33bce6af7825cc")
+    LAB_BRIDGE_SECRET: str = os.getenv("LAB_BRIDGE_SECRET", "bridge-internal-7f3a9c2e")
 
 
 settings = Settings()

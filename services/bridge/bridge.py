@@ -11,7 +11,9 @@ import os
 import httpx
 import websockets
 
-LAB_WS_URL = os.getenv("LAB_WS_URL", "ws://the-lab:8000/ws")
+_base_ws = os.getenv("LAB_WS_URL", "ws://the-lab:8000/ws")
+_bridge_secret = os.getenv("LAB_BRIDGE_SECRET", "bridge-internal-7f3a9c2e")
+LAB_WS_URL = f"{_base_ws}?token={_bridge_secret}"
 LAB_API_URL = os.getenv("LAB_API_URL", "http://the-lab:8000")
 AGENT_BUS_URL = os.getenv("AGENT_BUS_URL", "http://agent-bus:4000/events")
 HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "30"))
@@ -120,7 +122,8 @@ async def heartbeat_loop(client):
 async def main():
     print(f"Bridge starting: {LAB_WS_URL} -> {AGENT_BUS_URL}")
 
-    async with httpx.AsyncClient() as client:
+    auth_headers = {"Authorization": f"Bearer {_bridge_secret}"}
+    async with httpx.AsyncClient(headers=auth_headers) as client:
         heartbeat_task = asyncio.create_task(heartbeat_loop(client))
 
         while True:
