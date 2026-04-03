@@ -21,17 +21,21 @@ export function AgentPopup({ agent, color, zone, onClose }) {
   useEffect(() => {
     if (!agent) return
     let cancelled = false
+    const timeout = setTimeout(() => {
+      if (!cancelled) { setReportCount(0); setLastReport(null) }
+    }, 5000)
 
     Promise.all([
       getReportStats().catch(() => ({ by_agent: {} })),
       getReports({ agent_name: agent.name, limit: 1 }).catch(() => []),
     ]).then(([stats, reports]) => {
       if (cancelled) return
+      clearTimeout(timeout)
       setReportCount(stats.by_agent?.[agent.name] || 0)
       if (Array.isArray(reports) && reports.length > 0) setLastReport(reports[0])
     })
 
-    return () => { cancelled = true }
+    return () => { cancelled = true; clearTimeout(timeout) }
   }, [agent?.id])
 
   if (!agent) return null

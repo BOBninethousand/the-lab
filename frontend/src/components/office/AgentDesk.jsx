@@ -174,7 +174,7 @@ function DeskDecoration({ type, color }) {
   return null
 }
 
-export function AgentDesk({ agent, color, isSelected, onClick, style, dimmed }) {
+export function AgentDesk({ agent, color, isSelected, onClick, style }) {
   const isWorking = agent.status === 'working'
   const isError = agent.status === 'error'
   const deskStyle = DESK_STYLES[agent.name] || DESK_STYLES.Scout
@@ -182,8 +182,8 @@ export function AgentDesk({ agent, color, isSelected, onClick, style, dimmed }) 
 
   return (
     <div
-      className={`absolute cursor-pointer group ${dimmed ? 'opacity-30 pointer-events-none' : ''}`}
-      style={{ ...style, transformStyle: 'preserve-3d', transition: 'opacity 0.6s ease' }}
+      className="absolute cursor-pointer group"
+      style={{ ...style, transformStyle: 'preserve-3d' }}
       onClick={onClick}
     >
       {/* Desk surface */}
@@ -192,7 +192,6 @@ export function AgentDesk({ agent, color, isSelected, onClick, style, dimmed }) 
         style={{
           width: 180, height: 110,
           transformStyle: 'preserve-3d',
-          filter: dimmed ? 'grayscale(0.8)' : 'none',
         }}
       >
         {/* Desk top */}
@@ -231,14 +230,12 @@ export function AgentDesk({ agent, color, isSelected, onClick, style, dimmed }) 
           )}
 
           {/* Agent character */}
-          {!dimmed && (
-            <CssCharacter
-              color={color}
-              name={agent.name}
-              isWorking={isWorking}
-              isError={isError}
-            />
-          )}
+          <CssCharacter
+            color={color}
+            name={agent.name}
+            isWorking={isWorking}
+            isError={isError}
+          />
 
           {/* Status dot */}
           <div

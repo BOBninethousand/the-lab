@@ -163,7 +163,7 @@ const FURNITURE = {
   server: ServerRacks,
 }
 
-export function OfficeZone({ type, style, children }) {
+export function OfficeZone({ type, style, children, count }) {
   const config = ZONE_CONFIGS[type] || ZONE_CONFIGS.work
   const Furniture = FURNITURE[type]
 
@@ -194,7 +194,7 @@ export function OfficeZone({ type, style, children }) {
           fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
           textTransform: 'uppercase',
         }}>
-          {config.label}
+          {config.label}{count > 0 && ` (${count})`}
         </span>
       </div>
 

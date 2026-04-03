@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { getAgents } from '../lib/api'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -20,40 +20,38 @@ const AGENT_COLORS = {
   'Agent Echo': '#00BCD4',
 }
 
-// Home desk positions within work zone (spaced for 180x110 desks)
+// Home desk positions within work zone (2 cols x 4 rows, fits 600px height)
 const HOME_POSITIONS = [
   { left: 20, top: 30 },
   { left: 250, top: 30 },
-  { left: 20, top: 185 },
-  { left: 250, top: 185 },
-  { left: 20, top: 340 },
-  { left: 250, top: 340 },
-  { left: 20, top: 495 },
-  { left: 250, top: 495 },
-  { left: 20, top: 650 },
-  { left: 250, top: 650 },
+  { left: 20, top: 165 },
+  { left: 250, top: 165 },
+  { left: 20, top: 300 },
+  { left: 250, top: 300 },
+  { left: 20, top: 435 },
+  { left: 250, top: 435 },
 ]
 
-// Visitor positions per zone
+// Visitor positions per zone (fit within new zone dimensions)
 const ZONE_VISITOR_POS = {
   meeting: [
-    { left: 60, top: 40 },
-    { left: 220, top: 40 },
-    { left: 60, top: 170 },
-    { left: 220, top: 170 },
+    { left: 40, top: 30 },
+    { left: 200, top: 30 },
+    { left: 40, top: 130 },
+    { left: 200, top: 130 },
   ],
   boss: [
-    { left: 50, top: 30 },
-    { left: 210, top: 30 },
+    { left: 50, top: 25 },
+    { left: 210, top: 25 },
   ],
   notion: [
-    { left: 60, top: 30 },
-    { left: 210, top: 30 },
+    { left: 60, top: 20 },
+    { left: 210, top: 20 },
   ],
   server: [
-    { left: 120, top: 20 },
-    { left: 320, top: 20 },
-    { left: 520, top: 20 },
+    { left: 120, top: 30 },
+    { left: 380, top: 30 },
+    { left: 640, top: 30 },
   ],
 }
 
@@ -124,11 +122,24 @@ export function OfficeCss() {
     } catch {} finally { setIsLoading(false) }
   }
 
-  // Compute zones for each agent
-  const agentZones = {}
-  agents.forEach((agent, idx) => {
-    agentZones[agent.id] = { zone: getAgentZone(agent, collaboration), homeIdx: idx }
-  })
+  // Pre-compute zone assignments, counts, and slot indices
+  const { agentZones, zoneCounts, zoneSlots } = useMemo(() => {
+    const zones = {}
+    const counts = { work: 0, meeting: 0, boss: 0, notion: 0, server: 0 }
+    const slots = {}
+    const counters = { meeting: 0, boss: 0, notion: 0, server: 0 }
+
+    agents.forEach((agent, idx) => {
+      const zone = getAgentZone(agent, collaboration)
+      zones[agent.id] = { zone, homeIdx: idx }
+      counts[zone] = (counts[zone] || 0) + 1
+      if (zone !== 'work' && counters[zone] !== undefined) {
+        slots[agent.id] = counters[zone]++
+      }
+    })
+
+    return { agentZones: zones, zoneCounts: counts, zoneSlots: slots }
+  }, [agents, collaboration])
 
   const activeCount = agents.filter(a => a.status === 'working').length
   const zoomPct = Math.round(zoom * 100)
@@ -137,9 +148,6 @@ export function OfficeCss() {
     if (isDragging || wasDragging()) return
     setSelectedAgent(prev => prev?.id === agent.id ? null : agent)
   }
-
-  // Track visitor slot assignment per zone
-  const zoneSlotCounters = {}
 
   return (
     <div className="h-[calc(100vh-80px)] relative overflow-hidden select-none bg-[#08080e]">
@@ -196,6 +204,30 @@ export function OfficeCss() {
         </div>
       </div>
 
+      {/* Loading state */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-white/40" />
+            <p className="text-[11px] text-white/30" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              Loading office...
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && agents.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center z-20">
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-[12px] text-white/40" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              No agents online
+            </p>
+            <p className="text-[10px] text-white/20">Create agents from the Agents tab to populate the office</p>
+          </div>
+        </div>
+      )}
+
       {/* Viewport (captures mouse events for camera) */}
       <div
         ref={viewportRef}
@@ -225,7 +257,7 @@ export function OfficeCss() {
               className="relative"
               style={{
                 width: 1100,
-                height: 820,
+                height: 900,
                 background: 'linear-gradient(135deg, #0e0e16 0%, #0a0a10 100%)',
                 borderRadius: 10,
                 boxShadow: '0 60px 120px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02)',
@@ -254,17 +286,16 @@ export function OfficeCss() {
 
               {/* === ZONES === */}
 
-              {/* Work Area — top left */}
+              {/* Work Area — left column */}
               <OfficeZone
                 type="work"
-                style={{ left: 40, top: 40, width: 500, height: 810 }}
+                style={{ left: 40, top: 40, width: 500, height: 600 }}
+                count={zoneCounts.work}
               >
                 {agents.map((agent, idx) => {
-                  const zone = agentZones[agent.id]?.zone
+                  if (agentZones[agent.id]?.zone !== 'work') return null
                   const pos = HOME_POSITIONS[idx] || { left: 30 + (idx % 2) * 190, top: 40 + Math.floor(idx / 2) * 140 }
                   const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-                  const isDimmed = zone !== 'work'
-
                   return (
                     <AgentDesk
                       key={agent.id}
@@ -273,7 +304,6 @@ export function OfficeCss() {
                       isSelected={selectedAgent?.id === agent.id}
                       onClick={() => handleAgentClick(agent)}
                       style={{ left: pos.left, top: pos.top }}
-                      dimmed={isDimmed}
                     />
                   )
                 })}
@@ -282,19 +312,17 @@ export function OfficeCss() {
               {/* Meeting Room — top right */}
               <OfficeZone
                 type="meeting"
-                style={{ left: 560, top: 40, width: 480, height: 340 }}
+                style={{ left: 560, top: 40, width: 500, height: 250 }}
+                count={zoneCounts.meeting}
               >
-                {agents.map((agent, idx) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'meeting') return null
-                  if (!zoneSlotCounters.meeting) zoneSlotCounters.meeting = 0
-                  const slot = zoneSlotCounters.meeting++
+                {agents.map((agent) => {
+                  if (agentZones[agent.id]?.zone !== 'meeting') return null
+                  const slot = zoneSlots[agent.id] || 0
                   const vPos = ZONE_VISITOR_POS.meeting[slot % ZONE_VISITOR_POS.meeting.length]
                   const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-
                   return (
                     <AgentDesk
-                      key={`meeting-${agent.id}`}
+                      key={agent.id}
                       agent={agent}
                       color={color}
                       isSelected={selectedAgent?.id === agent.id}
@@ -305,22 +333,20 @@ export function OfficeCss() {
                 })}
               </OfficeZone>
 
-              {/* Boss Office — bottom left */}
+              {/* Boss Office — middle right */}
               <OfficeZone
                 type="boss"
-                style={{ left: 40, top: 870, width: 460, height: 190 }}
+                style={{ left: 560, top: 310, width: 500, height: 160 }}
+                count={zoneCounts.boss}
               >
                 {agents.map((agent) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'boss') return null
-                  if (!zoneSlotCounters.boss) zoneSlotCounters.boss = 0
-                  const slot = zoneSlotCounters.boss++
+                  if (agentZones[agent.id]?.zone !== 'boss') return null
+                  const slot = zoneSlots[agent.id] || 0
                   const vPos = ZONE_VISITOR_POS.boss[slot % ZONE_VISITOR_POS.boss.length]
                   const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-
                   return (
                     <AgentDesk
-                      key={`boss-${agent.id}`}
+                      key={agent.id}
                       agent={agent}
                       color={color}
                       isSelected={selectedAgent?.id === agent.id}
@@ -331,22 +357,20 @@ export function OfficeCss() {
                 })}
               </OfficeZone>
 
-              {/* Notion Outbox — bottom right */}
+              {/* Notion Outbox — lower right */}
               <OfficeZone
                 type="notion"
-                style={{ left: 560, top: 870, width: 480, height: 190 }}
+                style={{ left: 560, top: 490, width: 500, height: 150 }}
+                count={zoneCounts.notion}
               >
                 {agents.map((agent) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'notion') return null
-                  if (!zoneSlotCounters.notion) zoneSlotCounters.notion = 0
-                  const slot = zoneSlotCounters.notion++
+                  if (agentZones[agent.id]?.zone !== 'notion') return null
+                  const slot = zoneSlots[agent.id] || 0
                   const vPos = ZONE_VISITOR_POS.notion[slot % ZONE_VISITOR_POS.notion.length]
                   const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-
                   return (
                     <AgentDesk
-                      key={`notion-${agent.id}`}
+                      key={agent.id}
                       agent={agent}
                       color={color}
                       isSelected={selectedAgent?.id === agent.id}
@@ -357,22 +381,20 @@ export function OfficeCss() {
                 })}
               </OfficeZone>
 
-              {/* Server Room — bottom */}
+              {/* Server Room — bottom full width */}
               <OfficeZone
                 type="server"
-                style={{ left: 40, top: 1090, width: 1000, height: 130 }}
+                style={{ left: 40, top: 660, width: 1020, height: 200 }}
+                count={zoneCounts.server}
               >
                 {agents.map((agent) => {
-                  const zone = agentZones[agent.id]?.zone
-                  if (zone !== 'server') return null
-                  if (!zoneSlotCounters.server) zoneSlotCounters.server = 0
-                  const slot = zoneSlotCounters.server++
+                  if (agentZones[agent.id]?.zone !== 'server') return null
+                  const slot = zoneSlots[agent.id] || 0
                   const vPos = ZONE_VISITOR_POS.server[slot % ZONE_VISITOR_POS.server.length]
                   const color = AGENT_COLORS[agent.name] || agent.avatar_color || '#666'
-
                   return (
                     <AgentDesk
-                      key={`server-${agent.id}`}
+                      key={agent.id}
                       agent={agent}
                       color={color}
                       isSelected={selectedAgent?.id === agent.id}

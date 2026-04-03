@@ -13,6 +13,7 @@ export function useOfficeCamera() {
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef({ active: false, moved: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 })
   const didDragRef = useRef(false)
+  const panRef = useRef({ x: 0, y: 0 })
   const viewportRef = useRef(null)
 
   // Attach wheel listener with { passive: false } so preventDefault works
@@ -27,12 +28,14 @@ export function useOfficeCamera() {
     return () => el.removeEventListener('wheel', handleWheel)
   }, [])
 
+  useEffect(() => { panRef.current = { x: panX, y: panY } }, [panX, panY])
+
   const onPointerDown = useCallback((e) => {
     if (e.button !== 0) return
-    dragRef.current = { active: true, moved: false, startX: e.clientX, startY: e.clientY, startPanX: panX, startPanY: panY }
+    dragRef.current = { active: true, moved: false, startX: e.clientX, startY: e.clientY, startPanX: panRef.current.x, startPanY: panRef.current.y }
     didDragRef.current = false
     e.currentTarget.setPointerCapture(e.pointerId)
-  }, [panX, panY])
+  }, [])
 
   const onPointerMove = useCallback((e) => {
     if (!dragRef.current.active) return
