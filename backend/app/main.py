@@ -1284,8 +1284,7 @@ async def voice_speak(request: Request):
         raise HTTPException(status_code=500, detail=f"TTS failed: {e}")
 
 
-# --- CLAW3D REVERSE PROXY (unused — CSS office is now default) ---
-# These routes are inactive unless claw3d/agent-bus/bridge are started via --profile 3d-office.
+# --- CLAW3D REVERSE PROXY ---
 # Claw3D is patched with basePath: '/claw3d' so all its routes are under /claw3d/*
 # This proxy forwards /claw3d/* HTTP requests and /claw3d/api/gateway/ws WebSocket
 import websockets as _ws_lib
